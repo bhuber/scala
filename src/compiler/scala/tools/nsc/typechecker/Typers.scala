@@ -2054,44 +2054,49 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
         }
     }
 
+    private def includesTargetPos(tree: Tree) = (
+         tree.pos.isRange
+      && context.unit.exists
+      && (tree.pos includes context.unit.targetPos)
+    )
+    def typedStat(stat: Tree, exprOwner: Symbol, localTarget: Boolean): Tree = {
+      if (context.owner.isRefinementClass && !treeInfo.isDeclarationOrTypeDef(stat))
+        errorTree(stat, "only declarations allowed here")
+      else
+        stat match {
+          case imp @ Import(_, _) =>
+            context = context.makeNewImport(imp)
+            imp.symbol.initialize
+            typedImport(imp)
+          case _ =>
+            if (localTarget && !includesTargetPos(stat)) {
+              // skip typechecking of statements in a sequence where some other statement includes
+              // the targetposition
+              stat
+            } else {
+              val inBlock = exprOwner == context.owner
+              val localTyper = if (inBlock || (stat.isDef && !stat.isInstanceOf[LabelDef])) this
+                               else newTyper(context.make(stat, exprOwner))
+              // XXX this creates a spurious dead code warning if an exception is thrown
+              // in a constructor, even if it is the only thing in the constructor.
+              val result = checkDead(localTyper.typed(stat, EXPRmode | BYVALmode, WildcardType))
+              if (treeInfo.isSelfOrSuperConstrCall(result)) {
+                context.inConstructorSuffix = true
+                if (treeInfo.isSelfConstrCall(result) && result.symbol.pos.pointOrElse(0) >= exprOwner.enclMethod.pos.pointOrElse(0))
+                  error(stat.pos, "called constructor's definition must precede calling constructor's definition")
+              }
+              if (isWarnablePureExpression(result)) context.warning(stat.pos,
+                "a pure expression does nothing in statement position; " +
+                "you may be omitting necessary parentheses"
+              )
+              result
+            }
+        }
+    }
+
     def typedStats(stats: List[Tree], exprOwner: Symbol): List[Tree] = {
       val inBlock = exprOwner == context.owner
-      def includesTargetPos(tree: Tree) =
-        tree.pos.isRange && context.unit.exists && (tree.pos includes context.unit.targetPos)
       val localTarget = stats exists includesTargetPos
-      def typedStat(stat: Tree): Tree = {
-        if (context.owner.isRefinementClass && !treeInfo.isDeclarationOrTypeDef(stat))
-          errorTree(stat, "only declarations allowed here")
-        else
-          stat match {
-            case imp @ Import(_, _) =>
-              context = context.makeNewImport(imp)
-              imp.symbol.initialize
-              typedImport(imp)
-            case _ =>
-              if (localTarget && !includesTargetPos(stat)) {
-                // skip typechecking of statements in a sequence where some other statement includes
-                // the targetposition
-                stat
-              } else {
-                val localTyper = if (inBlock || (stat.isDef && !stat.isInstanceOf[LabelDef])) this
-                                 else newTyper(context.make(stat, exprOwner))
-                // XXX this creates a spurious dead code warning if an exception is thrown
-                // in a constructor, even if it is the only thing in the constructor.
-                val result = checkDead(localTyper.typed(stat, EXPRmode | BYVALmode, WildcardType))
-                if (treeInfo.isSelfOrSuperConstrCall(result)) {
-                  context.inConstructorSuffix = true
-                  if (treeInfo.isSelfConstrCall(result) && result.symbol.pos.pointOrElse(0) >= exprOwner.enclMethod.pos.pointOrElse(0))
-                    error(stat.pos, "called constructor's definition must precede calling constructor's definition")
-                }
-                if (isWarnablePureExpression(result)) context.warning(stat.pos,
-                  "a pure expression does nothing in statement position; " +
-                  "you may be omitting necessary parentheses"
-                )
-                result
-              }
-          }
-      }
 
       /** 'accessor' and 'accessed' are so similar it becomes very difficult to
        *  follow the logic, so I renamed one to something distinct.
@@ -2132,7 +2137,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
 
           // add synthetics
           context.unit.synthetics get e.sym foreach { tree =>
-            newStats += typedStat(tree) // might add even more synthetics to the scope
+            newStats += typedStat(tree, exprOwner, localTarget) // might add even more synthetics to the scope
             context.unit.synthetics -= e.sym
           }
 
@@ -2168,7 +2173,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
           }) ::: newStats.toList
         }
       }
-      val result = stats mapConserve typedStat
+      val result = stats mapConserve (s => typedStat(s, exprOwner, localTarget))
       if (phase.erasedTypes) result
       else checkNoDoubleDefsAndAddSynthetics(result)
     }
