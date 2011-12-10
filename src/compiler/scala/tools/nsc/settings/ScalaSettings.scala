@@ -182,6 +182,8 @@ trait ScalaSettings extends AbsScalaSettings
 
   val exposeEmptyPackage = BooleanSetting("-Yexpose-empty-package", "Internal only: expose the empty package.").internalOnly()
   val YnoProductN = BooleanSetting ("-Yno-productN", "Do not add ProductN to case classes")
+  val typerTimings = IntSetting ("-Ytyper-timings", "Show trees which required more than X milliseconds to type.",
+    0, Some((0, Int.MaxValue)), str => Some(str.toInt))
 
   def stop = stopAfter
 
