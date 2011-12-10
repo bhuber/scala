@@ -20,6 +20,7 @@ import util.Statistics
 import util.Statistics._
 import scala.tools.util.StringOps.{ countAsString, countElementsAsString }
 import scala.tools.util.EditDistance.similarString
+import scala.tools.api
 
 // Suggestion check whether we can do without priming scopes with symbols of outer scopes,
 // like the IDE does.
@@ -28,7 +29,7 @@ import scala.tools.util.EditDistance.similarString
  *  @author  Martin Odersky
  *  @version 1.0
  */
-trait Typers extends Modes with Adaptations with PatMatVirtualiser {
+trait Typers extends Modes with Adaptations with PatMatVirtualiser with api.Typers {
   self: Analyzer =>
 
   import global._
@@ -80,7 +81,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
 
   private def isPastTyper = phase.id > currentRun.typerPhase.id
 
-  abstract class Typer(context0: Context) extends TyperDiagnostics with Adaptation {
+  abstract class Typer(context0: Context) extends TyperDiagnostics with Adaptation with TyperAPI {
     import context0.unit
     import typeDebug.{ ptTree, ptBlock, ptLine }
 
