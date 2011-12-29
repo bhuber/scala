@@ -750,6 +750,19 @@ abstract class Erasure extends AddInterfaces
           override def parents: List[Type] = List(owner.info.parents.head)
           override def exclude(sym: Symbol): Boolean =
             !sym.isMethod || sym.isPrivate || super.exclude(sym)
+          override protected def matches(sym1: Symbol, sym2: Symbol) = sym1.isType || {
+            val info1 = owner.thisType.memberType(sym1)
+            val info2 = owner.thisType.memberType(sym2)
+            
+            (info1 matches info2) || {
+              info1.params.nonEmpty && info2.params.nonEmpty && {
+                val ptpe1 = elementType(ArrayClass, info1.params.last.tpe)
+                val ptpe2 = elementType(ArrayClass, info2.params.last.tpe)
+                
+                ptpe1 <:< ptpe2
+              }
+            }
+          }
         }
       }
       while (opc.hasNext) {
