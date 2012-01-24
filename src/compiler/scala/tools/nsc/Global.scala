@@ -412,9 +412,12 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
   // I only changed analyzer.
   //
   // factory for phases: namer, packageobjects, typer
-  lazy val analyzer = new {
-    val global: Global.this.type = Global.this
-  } with Analyzer
+  lazy val analyzer = {
+    if (settings.warnSlowTyping.isSetByUser)
+      new { val global: Global.this.type = Global.this } with ProfilingAnalyzer
+    else
+      new { val global: Global.this.type = Global.this } with Analyzer
+  }
 
   // phaseName = "superaccessors"
   object superAccessors extends {

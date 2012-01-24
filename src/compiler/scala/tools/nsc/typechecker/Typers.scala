@@ -20,7 +20,6 @@ import util.Statistics
 import util.Statistics._
 import scala.tools.util.StringOps.{ countAsString, countElementsAsString }
 import scala.tools.util.EditDistance.similarString
-import scala.tools.api
 
 // Suggestion check whether we can do without priming scopes with symbols of outer scopes,
 // like the IDE does.
@@ -29,7 +28,7 @@ import scala.tools.api
  *  @author  Martin Odersky
  *  @version 1.0
  */
-trait Typers extends Modes with Adaptations with PatMatVirtualiser with api.Typers {
+trait Typers extends Modes with Adaptations with PatMatVirtualiser with TypersAPI {
   self: Analyzer =>
 
   import global._
@@ -47,11 +46,19 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser with api.Type
   final val shortenImports = false
 
   def resetTyper() {
-    //println("resetTyper called")
     resetContexts()
     resetNamer()
     resetImplicits()
     transformed.clear()
+    // the log accumulates entries over time, even though it should not (Adriaan, Martin said so).
+    // Lacking a better fix, we clear it here (before the phase is created, meaning for each
+    // compiler run). This is good enough for the resident compiler, which was the most affected.
+    undoLog.clear()
+  }
+  def finishTyper() {
+    // need to clear it after as well or 10K+ accumulated entries are
+    // uncollectable the rest of the way.
+    undoLog.clear()
   }
 
   object UnTyper extends Traverser {
@@ -72,8 +79,9 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser with api.Type
   }
 */
 
+  // def finishTyper(): Unit = ()
   def newTyper(context: Context): Typer = new NormalTyper(context)
-  private class NormalTyper(context : Context) extends Typer(context)
+  private class NormalTyper(context0: Context) extends Typer(context0)
 
   // A transient flag to mark members of anonymous classes
   // that are turned private by typedBlock
@@ -1357,7 +1365,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser with api.Type
      *  @param cdef ...
      *  @return     ...
      */
-    def typedClassDef(cdef: ClassDef): Tree = {
+    def typedClassDef(cdef: ClassDef): ClassDef = {
 //      attributes(cdef)
       val clazz = cdef.symbol
       val typedMods = removeAnnotations(cdef.mods)
@@ -1381,14 +1389,14 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser with api.Type
         }
       }
       treeCopy.ClassDef(cdef, typedMods, cdef.name, tparams1, impl2)
-        .setType(NoType)
+        .setType(NoType).asInstanceOf[ClassDef]
     }
 
     /**
      *  @param mdef ...
      *  @return     ...
      */
-    def typedModuleDef(mdef: ModuleDef): Tree = {
+    def typedModuleDef(mdef: ModuleDef): ModuleDef = {
       // initialize all constructors of the linked class: the type completer (Namer.methodSig)
       // might add default getters to this object. example: "object T; class T(x: Int = 1)"
       val linkedClass = companionSymbolOf(mdef.symbol, context)
@@ -1411,7 +1419,7 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser with api.Type
       })
       val impl2  = finishMethodSynthesis(impl1, clazz, context)
 
-      treeCopy.ModuleDef(mdef, typedMods, mdef.name, impl2) setType NoType
+      treeCopy.ModuleDef(mdef, typedMods, mdef.name, impl2).setType(NoType).asInstanceOf[ModuleDef]
     }
     /** In order to override this in the TreeCheckers Typer so synthetics aren't re-added
      *  all the time, it is exposed here the module/class typing methods go through it.

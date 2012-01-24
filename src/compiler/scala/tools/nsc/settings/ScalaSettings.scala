@@ -29,6 +29,7 @@ trait ScalaSettings extends AbsScalaSettings
    *  - If neither of those, then "." is used.
    */
   protected def defaultClasspath = sys.env.getOrElse("CLASSPATH", ".")
+  def toIntParser(x: String): Option[Int] = try Some(x.toInt) catch { case _: NumberFormatException => None }
 
   /** Disable a setting */
   def disable(s: Setting) = allSettings -= s
@@ -180,6 +181,8 @@ trait ScalaSettings extends AbsScalaSettings
   val YvirtPatmat   = BooleanSetting    ("-Yvirtpatmat", "Translate pattern matches into flatMap/orElse calls. See scala.MatchingStrategy.")
   val YvirtClasses  = false // too embryonic to even expose as a -Y //BooleanSetting    ("-Yvirtual-classes", "Support virtual classes")
 
+  val warnSlowTyping = IntSetting ("-Ywarn-slow-typing", "Issue a warning for a tree which takes more than N ms to type", Int.MaxValue, Some((0, Int.MaxValue)), toIntParser)
+    
   val exposeEmptyPackage = BooleanSetting("-Yexpose-empty-package", "Internal only: expose the empty package.").internalOnly()
   val YnoProductN = BooleanSetting ("-Yno-productN", "Do not add ProductN to case classes")
 
@@ -194,7 +197,7 @@ trait ScalaSettings extends AbsScalaSettings
 
   val YpresentationLog     = StringSetting("-Ypresentation-log", "file", "Log presentation compiler events into file", "")
   val YpresentationReplay  = StringSetting("-Ypresentation-replay", "file", "Replay presentation compiler events from file", "")
-  val YpresentationDelay   = IntSetting("-Ypresentation-delay", "Wait number of ms after typing before starting typechecking", 0, Some((0, 999)), str => Some(str.toInt))
+  val YpresentationDelay   = IntSetting("-Ypresentation-delay", "Wait number of ms after typing before starting typechecking", 0, Some((0, 999)), toIntParser)
 
   /**
    * -P "Plugin" settings
