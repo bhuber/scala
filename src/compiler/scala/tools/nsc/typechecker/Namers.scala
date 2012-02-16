@@ -89,7 +89,7 @@ trait Namers extends MethodSynthesis {
       newNamer(context.makeNewScope(tree, sym))
     }
     def createInnerNamer() = {
-      newNamer(context.make(context.tree, owner, new Scope))
+      newNamer(context.make(context.tree, owner, newScope))
     }
     def createPrimaryConstructorParameterNamer: Namer = { //todo: can we merge this with SCCmode?
       val classContext = context.enclClass
@@ -282,7 +282,7 @@ trait Namers extends MethodSynthesis {
     }
 
     private def logAssignSymbol(tree: Tree, sym: Symbol): Symbol = {
-      log("[+symbol] " + sym.hasFlagsToString(-1L) + " " + sym)
+      log("[+symbol] " + sym.debugLocationString)
       tree.symbol = sym
       sym
     }
@@ -839,7 +839,7 @@ trait Namers extends MethodSynthesis {
       val parents = typer.parentTypes(templ) map checkParent
       enterSelf(templ.self)
 
-      val decls = new Scope
+      val decls = newScope
       val templateNamer = newNamer(context.make(templ, clazz, decls))
       templateNamer enterSyms templ.body
 

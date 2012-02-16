@@ -228,9 +228,9 @@ trait Infer {
       if (sym.isError) {
         tree setSymbol sym setType ErrorType
       } else {
-        val topClass = context.owner.toplevelClass
+        val topClass = context.owner.enclosingTopLevelClass
         if (context.unit.exists)
-          context.unit.depends += sym.toplevelClass
+          context.unit.depends += sym.enclosingTopLevelClass
 
         var sym1 = sym filter (alt => context.isAccessible(alt, pre, site.isInstanceOf[Super]))
         // Console.println("check acc " + (sym, sym1) + ":" + (sym.tpe, sym1.tpe) + " from " + pre);//DEBUG
@@ -640,13 +640,7 @@ trait Infer {
         case ExistentialType(tparams, qtpe) =>
           isApplicable(undetparams, qtpe, argtpes0, pt)
         case MethodType(params, _) =>
-          val formals0 = params map { param =>
-            param.tpe match {
-              case TypeRef(_, sym, List(tpe)) if sym isNonBottomSubClass CodeClass => tpe
-              case tpe => tpe
-            }
-          }
-          val formals = formalTypes(formals0, argtpes0.length)
+          val formals = formalTypes(params map { _.tpe }, argtpes0.length)
 
           def tryTupleApply: Boolean = {
             // if 1 formal, 1 argtpe (a tuple), otherwise unmodified argtpes0
@@ -1047,19 +1041,7 @@ trait Infer {
         }
     }
 
-    /** Type with all top-level occurrences of abstract types replaced by their bounds */
-    def widen(tp: Type): Type = tp match { // @M don't normalize here (compiler loops on pos/bug1090.scala )
-      case TypeRef(_, sym, _) if sym.isAbstractType =>
-        widen(tp.bounds.hi)
-      case TypeRef(_, sym, _) if sym.isAliasType =>
-        widen(tp.normalize)
-      case rtp @ RefinedType(parents, decls) =>
-        copyRefinedType(rtp, parents mapConserve widen, decls)
-      case AnnotatedType(_, underlying, _) =>
-        widen(underlying)
-      case _ =>
-        tp
-    }
+    def widen(tp: Type): Type = abstractTypesToBounds(tp)
 
     /** Substitute free type variables <code>undetparams</code> of type constructor
      *  <code>tree</code> in pattern, given prototype <code>pt</code>.
@@ -1273,7 +1255,7 @@ trait Infer {
              ptvars foreach instantiateTypeVar
           else {
             PatternTypeIncompatibleWithPtError1(tree0, pattp, pt)
-            ErrorType
+            return ErrorType
           }
         }
         tvars foreach instantiateTypeVar

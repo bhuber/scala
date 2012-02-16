@@ -8,21 +8,22 @@ package api
 
 import scala.collection.mutable.ListBuffer
 
-trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
+// Syncnote: Trees are currently not thread-safe.
+trait Trees { self: Universe =>
 
   private[scala] var nodeCount = 0
 
   type Modifiers <: AbsModifiers
 
   abstract class AbsModifiers {
-    def hasModifier(mod: Modifier.Value): Boolean
-    def allModifiers: Set[Modifier.Value]
+    def modifiers: Set[Modifier]
+    def hasModifier(mod: Modifier): Boolean
     def privateWithin: Name  // default: EmptyTypeName
     def annotations: List[Tree] // default: List()
     def mapAnnotations(f: List[Tree] => List[Tree]): Modifiers
   }
 
-  def Modifiers(mods: Set[Modifier.Value] = Set(),
+  def Modifiers(mods: Set[Modifier] = Set(),
                 privateWithin: Name = EmptyTypeName,
                 annotations: List[Tree] = List()): Modifiers
 
@@ -438,6 +439,12 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   case class Assign(lhs: Tree, rhs: Tree)
        extends TermTree
 
+  /** Either an assignment or a named argument. Only appears in argument lists,
+   *  eliminated by typecheck (doTypedApply)
+   */
+  case class AssignOrNamedArg(lhs: Tree, rhs: Tree)
+       extends TermTree
+
   /** Conditional expression */
   case class If(cond: Tree, thenp: Tree, elsep: Tree)
        extends TermTree
@@ -474,6 +481,17 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
    *  @param tpt    a class type
    */
   case class New(tpt: Tree) extends TermTree
+
+  /** Factory method for object creation `new tpt(args_1)...(args_n)`
+   *  A `New(t, as)` is expanded to: `(new t).<init>(as)`
+   */
+  def New(tpt: Tree, argss: List[List[Tree]]): Tree = {
+    assert(!argss.isEmpty)
+    // todo. we need to expose names in scala.reflect.api
+//    val superRef: Tree = Select(New(tpt), nme.CONSTRUCTOR)
+    val superRef: Tree = Select(New(tpt), nme.CONSTRUCTOR)
+    (superRef /: argss) (Apply)
+  }
 
   /** Type annotation, eliminated by explicit outer */
   case class Typed(expr: Tree, tpt: Tree)
@@ -535,6 +553,9 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
         extends TermTree with SymTree
     // The symbol of a This is the class to which the this refers.
     // For instance in C.this, it would be C.
+
+  def This(sym: Symbol): Tree =
+    This(sym.name.toTypeName) setSymbol sym
 
   /** Designator <qualifier> . <name> */
   case class Select(qualifier: Tree, name: Name)
@@ -701,6 +722,8 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
         }
       case Assign(lhs, rhs) =>
         traverse(lhs); traverse(rhs)
+      case AssignOrNamedArg(lhs, rhs) =>
+        traverse(lhs); traverse(rhs)
       case If(cond, thenp, elsep) =>
         traverse(cond); traverse(thenp); traverse(elsep)
       case Match(selector, cases) =>
@@ -799,6 +822,7 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     def ArrayValue(tree: Tree, elemtpt: Tree, trees: List[Tree]): ArrayValue
     def Function(tree: Tree, vparams: List[ValDef], body: Tree): Function
     def Assign(tree: Tree, lhs: Tree, rhs: Tree): Assign
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree): AssignOrNamedArg
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree): If
     def Match(tree: Tree, selector: Tree, cases: List[CaseDef]): Match
     def Return(tree: Tree, expr: Tree): Return
@@ -861,6 +885,8 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       new Function(vparams, body).copyAttrs(tree)
     def Assign(tree: Tree, lhs: Tree, rhs: Tree) =
       new Assign(lhs, rhs).copyAttrs(tree)
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree) =
+      new AssignOrNamedArg(lhs, rhs).copyAttrs(tree)
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree) =
       new If(cond, thenp, elsep).copyAttrs(tree)
     def Match(tree: Tree, selector: Tree, cases: List[CaseDef]) =
@@ -1006,6 +1032,11 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
       if (lhs0 == lhs) && (rhs0 == rhs) => t
       case _ => treeCopy.Assign(tree, lhs, rhs)
     }
+    def AssignOrNamedArg(tree: Tree, lhs: Tree, rhs: Tree) = tree match {
+      case t @ AssignOrNamedArg(lhs0, rhs0)
+      if (lhs0 == lhs) && (rhs0 == rhs) => t
+      case _ => treeCopy.AssignOrNamedArg(tree, lhs, rhs)
+    }
     def If(tree: Tree, cond: Tree, thenp: Tree, elsep: Tree) = tree match {
       case t @ If(cond0, thenp0, elsep0)
       if (cond0 == cond) && (thenp0 == thenp) && (elsep0 == elsep) => t
@@ -1125,9 +1156,9 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
   abstract class Transformer {
     val treeCopy: TreeCopier = newLazyTreeCopier
     protected var currentOwner: Symbol = definitions.RootClass
-    protected def currentMethod = currentOwner.enclMethod
-    protected def currentClass = currentOwner.enclClass
-    protected def currentPackage = currentOwner.toplevelClass.owner
+    protected def currentMethod = currentOwner.enclosingMethod
+    protected def currentClass = currentOwner.enclosingClass
+    protected def currentPackage = currentOwner.enclosingTopLevelClass.owner
     def transform(tree: Tree): Tree = tree match {
       case EmptyTree =>
         tree
@@ -1190,6 +1221,8 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
         }
       case Assign(lhs, rhs) =>
         treeCopy.Assign(tree, transform(lhs), transform(rhs))
+      case AssignOrNamedArg(lhs, rhs) =>
+        treeCopy.AssignOrNamedArg(tree, transform(lhs), transform(rhs))
       case If(cond, thenp, elsep) =>
         treeCopy.If(tree, transform(cond), transform(thenp), transform(elsep))
       case Match(selector, cases) =>
@@ -1357,6 +1390,8 @@ trait Trees /*extends reflect.generic.Trees*/ { self: Universe =>
     // vparams => body  where vparams:List[ValDef]
   case Assign(lhs, rhs) =>
     // lhs = rhs
+  case AssignOrNamedArg(lhs, rhs) =>                              (eliminated by typer, resurrected by reifier)
+    // @annotation(lhs = rhs)
   case If(cond, thenp, elsep) =>
     // if (cond) thenp else elsep
   case Match(selector, cases) =>
