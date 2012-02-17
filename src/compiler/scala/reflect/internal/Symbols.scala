@@ -897,8 +897,20 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
       _rawflags = mask
       this
     }
-    def setFlag(mask: Long): this.type = { _rawflags = rawflags | mask ; this }
-    def resetFlag(mask: Long): this.type = { _rawflags = rawflags & ~mask ; this }
+    def setFlag(mask: Long): this.type = {
+      val oldflags = rawflags
+      _rawflags = rawflags | mask
+      if (oldflags != rawflags)
+        EV << EV.SetFlag(this, oldflags, rawflags, mask)
+      this
+    }
+    def resetFlag(mask: Long): this.type = {
+      val oldflags = rawflags
+      _rawflags = rawflags & ~mask
+      if (oldflags != rawflags)
+        EV << EV.ClearFlag(this, oldflags, rawflags, mask)
+      this
+    }
     final def getFlag(mask: Long): Long = flags & mask
     final def resetFlags() { _rawflags = rawflags & TopLevelCreationFlags }
 
