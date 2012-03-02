@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+#
+
+# set -e
+scalac_args=${SCALAC_ARGS:-"-nowarn"}
+scala_args=${SCALA_ARGS:-""}
+max_tests=${MAX_TESTS:-999999999}
+export JAVA_OPTS="-Xmx4g"
+
+if [[ $# -eq 0 ]]; then
+  echo "Usage: $0 [options] [categories]"
+  # echo "  --all   run all known categories"
+  echo "  Categories: pos, run, jvm"
+  exit 1
+fi
+categories="$@"
+category=""
+
+distroot=$(cd $(dirname $0)/.. ; pwd)
+testroot="$distroot/test"
+scalac=$distroot/build/pack/bin/scalac
+scala=$distroot/build/pack/bin/scala
+testlibdir="$testroot/lib"
+excludes="$testroot/fast-excludes.txt"
+runner="$testroot/fast-runner.scala"
+
+dir=$(mktemp -d -t fasttest)
+# trap 'rm -rf "$dir"' 0
+echo "     Root: $distroot"
+echo "Workspace: $dir"
+
+function timer() {
+    if [[ $# -eq 0 ]]; then
+        echo $(date '+%s')
+    else
+        local stime=$1
+        etime=$(date '+%s')
+        if [[ -z "$stime" ]]; then
+          stime=$etime
+        fi
+
+        dt=$((etime - stime))
+        ds=$((dt % 60))
+        dm=$(((dt / 60) % 60))
+        dh=$((dt / 3600))
+        printf '%02d:%02d:%02d' $dh $dm $ds
+    fi
+}
+
+function packagize () {
+  file="$1"
+  hasPkg=$(grep ^package $file)
+  encoded=$(echo "${file/\.scala/}" | sed 's/[^a-zA-Z0-9]//g;')
+  pkg="${category}_${encoded}"
+  workfile="$srcdir/$file"
+  cp "$file" "$workfile"
+
+  # A standalone package statement we precede with another one
+  if [[ -n $hasPkg ]]; then
+    echo "package $pkg" > "$workfile"
+    cat "$file" >> "$workfile"
+  else
+    # If there's no package statement we can enclose it in a block.
+    cat > "$workfile" <<EOM
+package $pkg {
+  $(cat $file)
+}
+EOM
+  fi
+}
+
+function runPartestOnDirs () {
+  local outputFile="$dir/$1/dirs-partest.txt"
+
+  cd "$testroot"
+  partest_args=$(find files/$1 -depth 1 -type d | grep -v \.obj$ | sort -u)
+  partest_count=$(echo $(echo $partest_args | wc -w))
+  echo "[$1] Forking partest for $partest_count directory-based tests."
+  JAVA_OPTS="$JAVA_OPTS -Dpartest.actors=1" ./partest $(echo $partest_args) &> "$outputFile"
+}
+
+function runCategory () {
+  category=$1
+
+  srcdir="$dir/$category/src"
+  outdir="$dir/$category/target"
+  skipped="$dir/$category/skipped.txt"
+  pending="$dir/$category/pending.txt"
+  partestOutput="$dir/$category/partest.txt"
+  testsrcdir="$testroot/files/$category"
+
+  mkdir -p "$srcdir"
+  mkdir -p "$outdir"
+  touch "$skipped"
+  touch "$pending"
+
+  cd "$testsrcdir" || {
+    echo "Failed to cd to $testsrcdir"
+    exit 1
+  }
+  echo ""
+  echo "[$category] Starting fast pass for $testsrcdir"
+
+  testsLeft=$max_tests
+  for f in $(find . -depth 1 -name '*.scala' | xargs basename); do
+
+    if [[ $testsLeft -le 0 ]] || [[ -f "${f/scala/flags}" ]]; then
+      echo "$f" >> "$skipped"
+    elif grep -qFx "$category/$f" $excludes; then
+      echo "$f" >> "$skipped"
+    else
+      let testsLeft=testsLeft-1
+      packagize $f
+      echo "$f" >> "$pending"
+    fi
+  done
+
+  cd "$srcdir" || {
+    echo "Failed to cd to $srcdir"
+    exit 1
+  }
+  testCount=$(cat $pending | wc -l)
+  echo "[$category] compiling $(echo $testCount) tests (postponing $(echo $(cat $skipped | wc -l)))"
+
+  local startTime=$(timer)
+  $scalac $scalac_args -cp $testlibdir/'*' -d "$outdir" $(cat $pending) || {
+    echo "[$category] compilation failed: code $?"
+    exit 1
+  }
+  echo "[$category] compilation complete in $(timer $startTime)"
+
+  cd "$outdir" || {
+    echo "Failed to cd to $outdir"
+    exit 1
+  }
+  case "$category" in
+    jvm|run)
+      echo "[$category] running $(echo $testCount) compiled tests."
+      echo ""
+      local startTime=$(timer)
+      $runner $category "$testsrcdir" "$dir/$category" $(cat $pending) || {
+        echo "Runner failed: code $?"
+        exit 2
+      }
+      echo "[$category] executed $(echo $testCount) tests in $(timer $startTime)"
+      cp /dev/null "$pending"
+      ;;
+    *)
+      ;;
+  esac
+
+  partest_args=$(
+    for f in $(sort -u $skipped); do
+      echo files/$category/$f
+    done
+  )
+  partest_count=$(echo $(echo $partest_args | wc -w))
+
+  echo "[$category] backgrounding partest with $partest_count tests."
+  cd "$testroot"
+  ./partest $(echo $partest_args) &> "$partestOutput" &
+}
+
+for cat in $categories; do
+  # fork partest for directory tests
+  runPartestOnDirs $cat &
+  runCategory $cat
+done
+
+echo "Waiting for backgrounded partests..."
+echo ""
+
+wait
+
+find "$dir" -type f -name '*partest.txt' |xargs cat
