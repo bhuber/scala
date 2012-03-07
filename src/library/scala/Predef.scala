@@ -68,6 +68,8 @@ import annotation.elidable.ASSERTION
  *  functions to Array values. These are described in more detail in the documentation of [[scala.Array]].
  */
 object Predef extends LowPriorityImplicits {
+  def AnyRef = scala.AnyRef
+  
   /**
    * Retrieve the runtime representation of a class type. `classOf[T]` is equivalent to
    * the class literal `T.class` in Java.
