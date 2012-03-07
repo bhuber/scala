@@ -24,6 +24,10 @@ object genprod extends App {
     def fileName(i: Int) = className(i) + ".scala"
   }
 
+  def dropTrailingSpaces(s: String) = {
+    (s split "\\n").map(line => line.reverse.dropWhile(_.isWhitespace).reverse + "\n") mkString
+  }
+
   def productFiles  = arities map Product.make
   def tupleFiles    = arities map Tuple.make
   def functionFiles = (0 :: arities) map Function.make
@@ -82,7 +86,7 @@ package %s
     import scala.tools.nsc.io._
     val f = Path(out) / node.attributes("name").toString
     f.parent.createDirectory(force = true)
-    f.toFile writeAll node.text
+    f.toFile writeAll dropTrailingSpaces(node.text)
   }
 
   allfiles foreach writeFile
@@ -608,7 +612,7 @@ object {className} {{
 /** {className} is a cartesian product of {i} component{s}.
  *  @since 2.3
  */
-trait {className}{covariantArgs} extends Product {{
+trait {className}{covariantArgs} extends Any with Product {{
   /** The arity of this product.
    *  @return {i}
    */

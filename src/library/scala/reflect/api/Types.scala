@@ -46,7 +46,7 @@ trait Types { self: Universe =>
     /** Substitute types in `to` for corresponding occurrences of references to
      *  symbols `from` in this type.
      */
-    def substituteTypes(from: List[Symbol], to: List[Type]): Type // !!! Too many things with names like "subst"
+    def substituteTypes(from: List[Symbol], to: List[Type]): Type
 
     /** If this is a parameterized types, the type arguments.
      *  Otherwise the empty list
@@ -140,7 +140,7 @@ trait Types { self: Universe =>
      *  If this is not a singleton type, returns this type itself.
      *
      *  Example:
-     *
+     * 
      *  class Outer { class C ; val x: C }
      *  val o: Outer
      *  <o.x.type>.widen = o.C

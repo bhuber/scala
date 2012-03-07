@@ -17,7 +17,7 @@ object Product11 {
 /** Product11 is a cartesian product of 11 components.
  *  @since 2.3
  */
-trait Product11[+T1, +T2, +T3, +T4, +T5, +T6, +T7, +T8, +T9, +T10, +T11] extends Product {
+trait Product11[+T1, +T2, +T3, +T4, +T5, +T6, +T7, +T8, +T9, +T10, +T11] extends Any with Product {
   /** The arity of this product.
    *  @return 11
    */

@@ -17,7 +17,7 @@ object Product15 {
 /** Product15 is a cartesian product of 15 components.
  *  @since 2.3
  */
-trait Product15[+T1, +T2, +T3, +T4, +T5, +T6, +T7, +T8, +T9, +T10, +T11, +T12, +T13, +T14, +T15] extends Product {
+trait Product15[+T1, +T2, +T3, +T4, +T5, +T6, +T7, +T8, +T9, +T10, +T11, +T12, +T13, +T14, +T15] extends Any with Product {
   /** The arity of this product.
    *  @return 15
    */
