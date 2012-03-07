@@ -24,6 +24,10 @@ object genprod extends App {
     def fileName(i: Int) = className(i) + ".scala"
   }
 
+  def dropTrailingSpaces(s: String) = {
+    (s split "\\n").map(line => line.reverse.dropWhile(_.isWhitespace).reverse + "\n") mkString
+  }
+
   def productFiles  = arities map Product.make
   def tupleFiles    = arities map Tuple.make
   def functionFiles = (0 :: arities) map Function.make
@@ -82,7 +86,7 @@ package %s
     import scala.tools.nsc.io._
     val f = Path(out) / node.attributes("name").toString
     f.parent.createDirectory(force = true)
-    f.toFile writeAll node.text
+    f.toFile writeAll dropTrailingSpaces(node.text)
   }
 
   allfiles foreach writeFile
@@ -97,7 +101,7 @@ zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz */
 object FunctionZero extends Function(0) {
   override def genprodString  = "\n// genprod generated these sources at: " + new java.util.Date()
   override def covariantSpecs = "@specialized "
-  override def descriptiveComment = functionNTemplate.format("javaVersion", "anonfun0",
+  override def descriptiveComment = "  " + functionNTemplate.format("javaVersion", "anonfun0",
 """
  *    val javaVersion = () => sys.props("java.version")
  *
@@ -111,10 +115,10 @@ object FunctionZero extends Function(0) {
 
 object FunctionOne extends Function(1) {
   override def classAnnotation    = "@annotation.implicitNotFound(msg = \"No implicit view available from ${T1} => ${R}.\")\n"
-  override def contravariantSpecs = "@specialized(scala.Int, scala.Long, scala.Float, scala.Double) "
-  override def covariantSpecs     = "@specialized(scala.Unit, scala.Boolean, scala.Int, scala.Float, scala.Long, scala.Double) "
+  override def contravariantSpecs = "@specialized(scala.Int, scala.Long, scala.Float, scala.Double, scala.AnyRef) "
+  override def covariantSpecs     = "@specialized(scala.Unit, scala.Boolean, scala.Int, scala.Float, scala.Long, scala.Double, scala.AnyRef) "
 
-  override def descriptiveComment = functionNTemplate.format("succ", "anonfun1",
+  override def descriptiveComment = "  " + functionNTemplate.format("succ", "anonfun1",
 """
  *    val succ = (x: Int) => x + 1
  *    val anonfun1 = new Function1[Int, Int] {
@@ -146,7 +150,7 @@ object FunctionTwo extends Function(2) {
   override def contravariantSpecs = "@specialized(scala.Int, scala.Long, scala.Double) "
   override def covariantSpecs = "@specialized(scala.Unit, scala.Boolean, scala.Int, scala.Float, scala.Long, scala.Double) "
 
-  override def descriptiveComment = functionNTemplate.format("max", "anonfun2",
+  override def descriptiveComment = "  " + functionNTemplate.format("max", "anonfun2",
 """
  *    val max = (x: Int, y: Int) => if (x < y) y else x
  *
@@ -175,14 +179,20 @@ class Function(val i: Int) extends Group("Function") with Arity {
  *
  *  {{{
  *  object Main extends App { %s }
- *  }}}"""
+ *  }}}
+ *
+ *  Note that `Function1` does not define a total function, as might
+ *  be suggested by the existence of [[scala.PartialFunction]]. The only
+ *  distinction between `Function1` and `PartialFunction` is that the
+ *  latter can specify inputs which it will not handle.
+ """
 
   def toStr() = "\"" + ("<function%d>" format i) + "\""
   def apply() = {
 <file name={fileName}>{header}
 
 /** A function of {i} parameter{s}.
- *  {descriptiveComment}
+ *{descriptiveComment}
  */
 {classAnnotation}trait {className}{contraCoArgs} extends AnyRef {{ self =>
   /** Apply the body of this function to the argument{s}.
@@ -211,8 +221,8 @@ class Function(val i: Int) extends Group("Function") with Arity {
   )
 
   // f(x1,x2,x3,x4,x5,x6)  == (f.curried)(x1)(x2)(x3)(x4)(x5)(x6)
-  def curryComment = { """
-  /** Creates a curried version of this function.
+  def curryComment = {
+"""/** Creates a curried version of this function.
    *
    *  @return   a function `f` such that `f%s == apply%s`
    */
@@ -272,7 +282,7 @@ object TupleOne extends Tuple(1)
 object TupleTwo extends Tuple(2)
 {
   override def imports = Tuple.zipImports
-  override def covariantSpecs = "@specialized(Int, Long, Double) "
+  override def covariantSpecs = "@specialized(Int, Long, Double, Char, Boolean, AnyRef) "
   override def moreMethods = """
   /** Swaps the elements of this `Tuple`.
    * @return a new Tuple where the first element is the second element of this Tuple and the
