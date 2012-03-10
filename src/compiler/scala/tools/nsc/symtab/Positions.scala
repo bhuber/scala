@@ -2,9 +2,10 @@ package scala.tools.nsc
 package symtab
 
 import scala.tools.nsc.util.{ SourceFile, Position, OffsetPosition, NoPosition }
+import scala.reflect.internal
 
-trait Positions extends scala.reflect.internal.Positions {
-self: scala.tools.nsc.symtab.SymbolTable =>
+trait Positions extends internal.Positions {
+  self: SymbolTable =>
 
   def rangePos(source: SourceFile, start: Int, point: Int, end: Int) =
     new OffsetPosition(source, point)

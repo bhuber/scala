@@ -28,7 +28,7 @@ abstract class SyntaxAnalyzer extends SubComponent with Parsers with MarkupParse
         else if (reporter.incompleteHandled) new UnitParser(unit).parse()
         else new UnitParser(unit).smartParse()
 
-      if (settings.Yrangepos.value && !reporter.hasErrors)
+      if (settings.YvalidateRangePos.value && !reporter.hasErrors)
         validatePositions(unit.body)
     }
   }

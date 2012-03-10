@@ -9,17 +9,13 @@ package doc
 
 import reporters._
 import util._
-import interactive.RangePositions
 import DocParser.Parsed
 
 /** A very minimal global customized for extracting `DocDefs`.  It stops
  *  right after parsing so it can read `DocDefs` from source code which would
  *  otherwise cause the compiler to go haywire.
  */
-class DocParser(settings: nsc.Settings, reporter: Reporter)
-        extends Global(settings, reporter)
-           with RangePositions {
-
+class DocParser(settings: nsc.Settings, reporter: Reporter) extends Global(settings, reporter) {
   def this(settings: Settings) = this(settings, new ConsoleReporter(settings))
   def this() = this(new Settings(Console println _))
 

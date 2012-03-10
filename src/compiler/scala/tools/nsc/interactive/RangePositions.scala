@@ -28,7 +28,7 @@ import scala.collection.mutable.ListBuffer
  *   Otherwise, the singleton consisting of the node itself.
  */
 trait RangePositions extends Trees with Positions {
-self: scala.tools.nsc.Global =>
+  self: scala.tools.nsc.Global =>
 
   case class Range(pos: Position, tree: Tree) {
     def isFree = tree == EmptyTree

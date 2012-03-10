@@ -33,7 +33,7 @@ object Main extends Driver with EvalLoop {
   override def processSettingsHook(): Boolean =
     if (settings.Yidedebug.value) {
       settings.Xprintpos.value = true
-      settings.Yrangepos.value = true
+      settings.YvalidateRangePos.value = true
       val compiler = new interactive.Global(settings, reporter)
       import compiler.{ reporter => _, _ }
 
@@ -71,9 +71,7 @@ object Main extends Driver with EvalLoop {
       true
     }
 
-  override def newCompiler(): Global =
-    if (settings.Yrangepos.value) new Global(settings, reporter) with interactive.RangePositions
-    else Global(settings, reporter)
+  override def newCompiler(): Global = Global(settings, reporter)
 
   override def doCompile(compiler: Global) {
     if (settings.resident.value)
