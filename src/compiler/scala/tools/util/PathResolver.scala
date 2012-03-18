@@ -9,10 +9,11 @@ package util
 import java.net.{ URL, MalformedURLException }
 import scala.tools.reflect.WrappedProperties.AccessControl
 import nsc.{ Settings, GenericRunnerSettings }
-import nsc.util.{ ClassPath, JavaClassPath, ScalaClassLoader }
+import nsc.util.{ ClassPath, ClassPathPrinter, JavaClassPath, ScalaClassLoader, MergedClassPath, CompilerClassProvider }
 import nsc.io.{ File, Directory, Path, AbstractFile }
-import ClassPath.{ JavaContext, DefaultJavaContext, join, split }
+import ClassPath.{ join, split }
 import PartialFunction.condOpt
+import scala.io.ClassProvision._
 
 // Loosely based on the draft specification at:
 // https://wiki.scala-lang.org/display/SW/Classpath
@@ -135,10 +136,10 @@ object PathResolver {
       )
   }
 
-  def fromPathString(path: String, context: JavaContext = DefaultJavaContext): JavaClassPath = {
+  def fromPathString(path: String): PackageProvider = {
     val s = new Settings()
     s.classpath.value = path
-    new PathResolver(s, context) result
+    new PathResolver(s) result
   }
 
   /** With no arguments, show the interesting values in Environment and Defaults.
@@ -156,14 +157,19 @@ object PathResolver {
       val pr = new PathResolver(settings)
       println(" COMMAND: 'scala %s'".format(args.mkString(" ")))
       println("RESIDUAL: 'scala %s'\n".format(rest.mkString(" ")))
-      pr.result.show
+      // pr.result.showSummary()
     }
   }
 }
 import PathResolver.{ Defaults, Environment, firstNonEmpty, ppcp }
 
-class PathResolver(settings: Settings, context: JavaContext) {
-  def this(settings: Settings) = this(settings, if (settings.inline.value) new JavaContext else DefaultJavaContext)
+class PathResolver(settings: Settings) {
+  val logic = JavaClassPath.DefaultLogic
+  // val logic = (
+  //   if (settings.inline.value) JavaClassPath.InlinerLogic
+  //   else JavaClassPath.DefaultLogic
+  // )
+  import logic._
 
   private def cmdLineOrElse(name: String, alt: String) = {
     (commandLineFor(name) match {
@@ -208,10 +214,8 @@ class PathResolver(settings: Settings, context: JavaContext) {
       else sys.env.getOrElse("CLASSPATH", ".")
     )
 
-    import context._
-
     // Assemble the elements!
-    def basis = List[Traversable[ClassPath[AbstractFile]]](
+    def basis = List[Traversable[ClassPath]](
       classesInPath(javaBootClassPath),             // 1. The Java bootstrap class path.
       contentsOfDirsInPath(javaExtDirs),            // 2. The Java extension class path.
       classesInExpandedPath(javaUserClassPath),     // 3. The Java application class path.
@@ -245,8 +249,9 @@ class PathResolver(settings: Settings, context: JavaContext) {
 
   def containers = Calculated.containers
 
-  lazy val result = {
-    val cp = new JavaClassPath(containers.toIndexedSeq, context)
+  lazy val result: CompilerClassProvider = {
+    val cp = new JavaClassPath(containers.toIndexedSeq, logic)
+
     if (settings.Ylogcp.value) {
       Console.println("Classpath built from " + settings.toConciseString)
       Console.println("Defaults: " + PathResolver.Defaults)
@@ -255,9 +260,13 @@ class PathResolver(settings: Settings, context: JavaContext) {
       val xs = (Calculated.basis drop 2).flatten.distinct
       println("After java boot/extdirs classpath has %d entries:" format xs.size)
       xs foreach (x => println("  " + x))
+
+      // The really verbose version.
+      if (settings.debug.value)
+        ClassPathPrinter.show(cp)
     }
     cp
   }
 
-  def asURLs = result.asURLs
+  def asURLs = result.classPathUrls
 }

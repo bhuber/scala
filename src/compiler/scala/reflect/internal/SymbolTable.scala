@@ -37,6 +37,8 @@ abstract class SymbolTable extends api.Universe
   def log(msg: => AnyRef): Unit
   def abort(msg: String): Nothing = throw new FatalError(supplementErrorMessage(msg))
 
+  def isSameFile(f1: AbstractFileType, f2: AbstractFileType) = f1.path == f2.path
+
   @deprecated("Give us a reason", "2.10.0")
   def abort(): Nothing = abort("unknown error")
 
@@ -47,10 +49,9 @@ abstract class SymbolTable extends api.Universe
   /** Overridden when we know more about what was happening during a failure. */
   def supplementErrorMessage(msg: String): String = msg
 
-  private[scala] def printResult[T](msg: String)(result: T) = {
-    Console.err.println(msg + ": " + result)
-    result
-  }
+  private[scala] def printResult[T](msg: String)(result: T): T =
+    scala.runtime.printResult(msg)(result)
+
   private[scala] def logResult[T](msg: String)(result: T): T = {
     log(msg + ": " + result)
     result

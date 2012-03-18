@@ -92,7 +92,7 @@ trait Macros { self: Analyzer =>
     lazy val libraryClassLoader = {
       // todo. this is more or less okay, but not completely correct
       // see https://issues.scala-lang.org/browse/SI-5433 for more info
-      val classpath = global.classPath.asURLs
+      val classpath = global.classProvider.classPathUrls
       var loader: ClassLoader = ScalaClassLoader.fromURLs(classpath, self.getClass.getClassLoader)
 
       // an heuristic to detect REPL

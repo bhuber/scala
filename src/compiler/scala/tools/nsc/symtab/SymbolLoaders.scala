@@ -8,12 +8,12 @@ package symtab
 
 import java.io.IOException
 import scala.compat.Platform.currentTime
-import scala.tools.nsc.util.{ ClassPath }
 import classfile.ClassfileParser
 import reflect.internal.Flags._
 import reflect.internal.MissingRequirementError
 import util.Statistics._
 import scala.tools.nsc.io.{ AbstractFile, MsilFile }
+import scala.io.ClassProvision._
 
 /** This class ...
  *
@@ -74,22 +74,26 @@ abstract class SymbolLoaders {
    *  (overridden in interactive.Global).
    */
   def enterToplevelsFromSource(root: Symbol, name: String, src: AbstractFile) {
-    enterClassAndModule(root, name, new SourcefileLoader(src))
+    enterClassAndModule(root, name, new SourcefileLoader(scala.io.internal.ClassSourceFile(src)))
   }
 
   /** Initialize toplevel class and module symbols in `owner` from class path representation `classRep`
    */
-  def initializeFromClassPath(owner: Symbol, classRep: ClassPath[platform.BinaryRepr]#ClassRep) {
-    ((classRep.binary, classRep.source) : @unchecked) match {
-      case (Some(bin), Some(src)) if platform.needCompile(bin, src) =>
-        if (settings.verbose.value) inform("[symloader] picked up newer source file for " + src.path)
-        global.loaders.enterToplevelsFromSource(owner, classRep.name, src)
-      case (None, Some(src)) =>
-        if (settings.verbose.value) inform("[symloader] no class, picked up source file for " + src.path)
-        global.loaders.enterToplevelsFromSource(owner, classRep.name, src)
-      case (Some(bin), _) =>
-        global.loaders.enterClassAndModule(owner, classRep.name, platform.newClassLoader(bin))
+  def initializeFromClassRep(owner: Symbol, classRep: ClassRep) {
+    val useSource = classRep match {
+      case DualClassRep(_, _) => platform needCompile classRep
+      case SourceRep(_)       => true
+      case BinaryRep(_)       => false
+      case _                  => println("nothing") ; return
     }
+    vinform("[%s] %s %s".format(
+      if (useSource) "src" else "bin", owner, classRep))
+
+    val newLoader = (
+      if (useSource) new global.loaders.SourcefileLoader(classRep.source)
+      else platform.newClassLoader(classRep.binary)
+    )
+    global.loaders.enterClassAndModule(owner, classRep.className, newLoader)
   }
 
   /**
@@ -158,8 +162,10 @@ abstract class SymbolLoaders {
         sym setInfo tpe
     }
     private def initRoot(root: Symbol) {
-      if (root.rawInfo == this)
-        List(root, root.moduleClass) foreach markAbsent
+      if (root.rawInfo == this) {
+        markAbsent(root)
+        markAbsent(root.moduleClass)
+      }
       else if (root.isClass && !root.isModuleClass)
         root.rawInfo.load(root)
     }
@@ -168,8 +174,8 @@ abstract class SymbolLoaders {
   /**
    * Load contents of a package
    */
-  class PackageLoader(classpath: ClassPath[platform.BinaryRepr]) extends SymbolLoader {
-    protected def description = "package loader "+ classpath.name
+  class PackageLoader(classProvider: PackageProvider) extends SymbolLoader {
+    protected def description = "package loader "+ classProvider
 
     def enterPackage(root: Symbol, name: String, completer: SymbolLoader) {
       val preExisting = root.info.decls.lookup(newTermName(name))
@@ -208,26 +214,36 @@ abstract class SymbolLoaders {
     protected def doComplete(root: Symbol) {
       assert(root.isPackageClass, root)
       root.setInfo(new PackageClassInfoType(newScope, root))
+      vinform("Completing package " + root.name)
 
-      val sourcepaths = classpath.sourcepaths
-      for (classRep <- classpath.classes if platform.doLoad(classRep)) {
-        initializeFromClassPath(root, classRep)
+      // val sourcepaths = classpath.sourcepaths
+      for (classRep <- classProvider.classes) {
+        if (platform.doLoad(classRep)) {
+          vinform("doComplete/doLoad: " + classRep)
+          initializeFromClassRep(root, classRep)
+        }
+        else {
+          vinform("doComplete/doNOTLoad: " + classRep)
+        }
       }
 
-      for (pkg <- classpath.packages) {
-        enterPackage(root, pkg.name, new PackageLoader(pkg))
+      for (pkg <- classProvider.packages) {
+        vinform("doComplete package " + ((root, pkg.packageName)))
+        enterPackage(root, pkg.packageName, new PackageLoader(pkg))
       }
 
       openPackageModule(root)
     }
   }
 
-  class ClassfileLoader(val classfile: AbstractFile) extends SymbolLoader {
+  class ClassfileLoader(val classfile: ClassBinaryFile) extends SymbolLoader {
+    require(classfile ne NoClassBinaryFile, this)
+
     private object classfileParser extends ClassfileParser {
       val global: SymbolLoaders.this.global.type = SymbolLoaders.this.global
     }
 
-    protected def description = "class file "+ classfile.toString
+    protected def description = "class file " + classfile
 
     protected def doComplete(root: Symbol) {
       val start = startTimer(classReadNanos)
@@ -247,11 +263,13 @@ abstract class SymbolLoaders {
     protected def doComplete(root: Symbol) { typeParser.parse(typ, root) }
   }
 
-  class SourcefileLoader(val srcfile: AbstractFile) extends SymbolLoader {
-    protected def description = "source file "+ srcfile.toString
+  class SourcefileLoader(val srcfile: ClassSourceFile) extends SymbolLoader {
+    protected def description = "" + srcfile
     override def fromSource = true
     override def sourcefile = Some(srcfile)
-    protected def doComplete(root: Symbol): Unit = global.currentRun.compileLate(srcfile)
+    protected def doComplete(root: Symbol) {
+      global.currentRun.compileLate(srcfile)
+    }
   }
 
   object moduleClassLoader extends SymbolLoader {

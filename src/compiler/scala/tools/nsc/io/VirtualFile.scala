@@ -25,14 +25,15 @@ class VirtualFile(val name: String, override val path: String) extends AbstractF
   def this(name: String) = this(name, name)
 
   override def hashCode = path.hashCode
-  override def equals(that: Any) = that match {
+  override def equals(that: Any) = runtime.printResult("Comparing VirtualFiles: " + ((this, that)))(that match {
     case x: VirtualFile => x.path == path
     case _              => false
-  }
+  })
 
   //########################################################################
   // Private data
-  private var content = new Array[Byte](0)
+  private var _content = new Array[Byte](0)
+  def content = _content
 
   //########################################################################
   // Public Methods
@@ -49,7 +50,7 @@ class VirtualFile(val name: String, override val path: String) extends AbstractF
     new ByteArrayOutputStream() {
       override def close() {
         super.close()
-        content = toByteArray()
+        _content = toByteArray()
       }
     }
   }

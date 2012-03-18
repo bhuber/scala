@@ -2,7 +2,7 @@ package scala.reflect.api
 
 import collection.{ immutable, mutable }
 
-abstract class Modifier private[api] () {
+sealed abstract class Modifier {
   def name: String
   def isKeyword: Boolean
   def sourceString: String = if (isKeyword) "`" + name + "`" else name

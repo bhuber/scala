@@ -10,9 +10,8 @@ package scala.tools.scalap
 import java.io.{ PrintStream, OutputStreamWriter, ByteArrayOutputStream }
 import scala.reflect.NameTransformer
 import scalax.rules.scalasig._
-import tools.nsc.util.{ ClassPath, JavaClassPath }
-import tools.util.PathResolver
-import ClassPath.DefaultJavaContext
+import scala.io.ClassProvision._
+import tools.nsc.util.JavaClassPath
 import tools.nsc.io.{ PlainFile, AbstractFile }
 
 /**The main object used to execute scalap on the command-line.
@@ -95,46 +94,26 @@ class Main {
   /** Executes scalap with the given arguments and classpath for the
    *  class denoted by `classname`.
    */
-  def process(args: Arguments, path: ClassPath[AbstractFile])(classname: String): Unit = {
+  def process(args: Arguments, provider: ClassRepProvider)(classname: String): Unit = {
+    val name    = if (classname == "scala.AnyRef") "java.lang.Object" else classname
+    val encName = NameTransformer.encode(name)
+
     // find the classfile
-    val encName = NameTransformer.encode(
-      if (classname == "scala.AnyRef") "java.lang.Object"
-      else classname)
-    val cls = path.findClass(encName)
-    if (cls.isDefined && cls.get.binary.isDefined) {
-      val cfile = cls.get.binary.get
-      if (verbose) {
-        Console.println(Console.BOLD + "FILENAME" + Console.RESET + " = " + cfile.path)
-      }
-      val bytes = cfile.toByteArray
-      if (isScalaFile(bytes)) {
-        Console.println(decompileScala(bytes, isPackageObjectFile(encName)))
-      } else {
-        // construct a reader for the classfile content
-        val reader = new ByteArrayReader(cfile.toByteArray)
-        // parse the classfile
-        val clazz = new Classfile(reader)
-        processJavaClassFile(clazz)
-      }
-      // if the class corresponds to the artificial class scala.Any.
-      // (see member list in class scala.tool.nsc.symtab.Definitions)
+    provider.classRep(encName).binary match {
+      case NoClassBinaryFile => Console.println("class/object " + classname + " not found.")
+      case cfile        =>
+        if (verbose)
+          Console.println(Console.BOLD + "FILENAME" + Console.RESET + " = " + cfile)
+
+        val bytes = cfile.bytes
+        if (isScalaFile(bytes))
+          Console.println(decompileScala(bytes, isPackageObjectFile(encName)))
+        else {
+          // parse the classfile
+          val clazz = new Classfile(new ByteArrayReader(bytes))
+          processJavaClassFile(clazz)
+        }
     }
-    else
-      Console.println("class/object " + classname + " not found.")
-  }
-
-  object EmptyClasspath extends ClassPath[AbstractFile] {
-    /**
-     * The short name of the package (without prefix)
-     */
-    def name              = ""
-    def asURLs            = Nil
-    def asClasspathString = ""
-
-    val context     = DefaultJavaContext
-    val classes     = IndexedSeq()
-    val packages    = IndexedSeq()
-    val sourcepaths = IndexedSeq()
   }
 }
 
@@ -177,10 +156,7 @@ object Main extends Main {
     printPrivates = arguments contains "-private"
     // construct a custom class path
     val cparg = List("-classpath", "-cp") map (arguments getArgument _) reduceLeft (_ orElse _)
-    val path = cparg match {
-      case Some(cp) => new JavaClassPath(DefaultJavaContext.classesInExpandedPath(cp), DefaultJavaContext)
-      case _        => PathResolver.fromPathString("")
-    }
+    val path  = JavaClassPath fromClasspath (cparg getOrElse ".")
     // print the classpath if output is verbose
     if (verbose)
       Console.println(Console.BOLD + "CLASSPATH" + Console.RESET + " = " + path)

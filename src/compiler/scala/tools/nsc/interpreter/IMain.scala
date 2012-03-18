@@ -93,9 +93,9 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   private var _lineManager: Line.Manager            = null                              // logic for individual lines
   private val _compiler: Global                     = newCompiler(settings, reporter)   // our private compiler
 
-  def compilerClasspath: Seq[URL] = (
-    if (isInitializeComplete) global.classPath.asURLs
-    else new PathResolver(settings).result.asURLs  // the compiler's classpath
+  def compilerClasspathURLs = (
+    if (isInitializeComplete) global.classProvider.classPathUrls
+    else new PathResolver(settings).result.classPathUrls
   )
   def settings = currentSettings
   def savingSettings[T](fn: Settings => Unit)(body: => T): T = {
@@ -328,8 +328,8 @@ class IMain(initialSettings: Settings, protected val out: JPrintWriter) extends 
   }
   private def makeClassLoader(): AbstractFileClassLoader =
     new TranslatingClassLoader(parentClassLoader match {
-      case null   => ScalaClassLoader fromURLs compilerClasspath
-      case p      => new URLClassLoader(compilerClasspath, p)
+      case null   => ScalaClassLoader fromURLs compilerClasspathURLs
+      case p      => new URLClassLoader(compilerClasspathURLs, p)
     })
 
   def getInterpreterClassLoader() = classLoader

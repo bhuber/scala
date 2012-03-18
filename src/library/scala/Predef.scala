@@ -82,6 +82,11 @@ object Predef extends LowPriorityImplicits {
    */
   def classOf[T]: Class[T] = null // This is a stub method. The actual implementation is filled in by the compiler.
 
+  def ?[T](msg: String)(result: T) = {
+    // Console.err.println(msg + ": " + result)
+    result
+  }
+
   type String        = java.lang.String
   type Class[T]      = java.lang.Class[T]
 

@@ -14,7 +14,8 @@ import scala.collection.{ mutable, immutable }
 import scala.collection.mutable.{ ListBuffer, ArrayBuffer }
 import scala.annotation.switch
 import scala.reflect.internal.pickling.{PickleBuffer, ByteCodecs}
-import scala.tools.nsc.io.AbstractFile
+import scala.tools.nsc.io.{ AbstractFile }
+import scala.io.ClassProvision._
 
 /** This abstract class implements a class file parser.
  *
@@ -53,8 +54,8 @@ abstract class ClassfileParser {
     val global: ClassfileParser.this.global.type = ClassfileParser.this.global
   }
 
-  def parse(file: AbstractFile, root: Symbol) = try {
-    debuglog("[class] >> " + root.fullName)
+  def parse(file: ClassBinaryFile, root: Symbol) = try {
+    debuglog("[parse] >> " + root.fullName + " from file " + file)
 
     def handleMissing(e: MissingRequirementError) = {
       if (settings.debug.value) e.printStackTrace
@@ -445,11 +446,13 @@ abstract class ClassfileParser {
   /** Return the class symbol of the given name. */
   def classNameToSymbol(name: Name): Symbol = {
     def loadClassSymbol(name: Name): Symbol = {
-      val file = global.classPath findSourceFile ("" +name) getOrElse {
+      val s = name.toString
+      val binary: ClassBinaryFile = global.classProvider byteCode s
+      if (binary eq NoClassBinaryFile) {
         warning("Class " + name + " not found - continuing with a stub.")
         return NoSymbol.newClass(name.toTypeName)
       }
-      val completer     = new global.loaders.ClassfileLoader(file)
+      val completer     = new global.loaders.ClassfileLoader(binary)
       var owner: Symbol = definitions.RootClass
       var sym: Symbol   = NoSymbol
       var ss: Name      = null
@@ -471,7 +474,7 @@ abstract class ClassfileParser {
       ss = name.subName(0, start)
       owner.info.decls lookup ss orElse {
         sym = owner.newClass(ss.toTypeName) setInfoAndEnter completer
-        debuglog("loaded "+sym+" from file "+file)
+        debuglog("loaded "+sym+" from file "+binary)
         sym
       }
     }
@@ -1102,10 +1105,9 @@ abstract class ClassfileParser {
     for (entry <- innerClasses.values) {
       // create a new class member for immediate inner classes
       if (entry.outerName == externalName) {
-        val file = global.classPath.findSourceFile(entry.externalName.toString) getOrElse {
-          throw new AssertionError(entry.externalName)
-        }
-        enterClassAndModule(entry, new global.loaders.ClassfileLoader(file), entry.jflags)
+        val bin = global.classProvider byteCode entry.externalName.toString
+        assert(bin ne NoClassBinaryFile, "" + ((entry.outerName, entry.externalName.toString)))
+        enterClassAndModule(entry, new global.loaders.ClassfileLoader(bin), entry.jflags)
       }
     }
   }

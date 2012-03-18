@@ -13,7 +13,7 @@ import scala.tools.util.{ Profiling, PathResolver }
 import scala.collection.{ mutable, immutable }
 import io.{ SourceReader, AbstractFile, Path }
 import reporters.{ Reporter, ConsoleReporter }
-import util.{ NoPosition, Exceptional, ClassPath, SourceFile, NoSourceFile, Statistics, StatisticsInfo, BatchSourceFile, ScriptSourceFile, ShowPickled, ScalaClassLoader, returning }
+import util.{ NoPosition, CompilerClassProvider, Exceptional, ClassPath, SourceFile, NoSourceFile, Statistics, StatisticsInfo, BatchSourceFile, ScriptSourceFile, ShowPickled, ScalaClassLoader, returning }
 import scala.reflect.internal.pickling.{ PickleBuffer, PickleFormat }
 import settings.{ AestheticSettings }
 
@@ -27,10 +27,12 @@ import typechecker._
 import transform._
 
 import backend.icode.{ ICodes, GenICode, ICodeCheckers }
-import backend.{ ScalaPrimitives, Platform, MSILPlatform, JavaPlatform }
+import backend.{ ScalaPrimitives, Platform, JavaPlatform }
 import backend.jvm.GenJVM
 import backend.opt.{ Inliners, InlineExceptionHandlers, ClosureElimination, DeadCodeElimination }
 import backend.icode.analysis._
+import ClassPath._
+import scala.io.ClassProvision._
 
 class Global(var currentSettings: Settings, var reporter: Reporter) extends SymbolTable
                                                                       with CompilationUnits
@@ -44,8 +46,6 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
                                                                       with symtab.Positions {
 
   override def settings = currentSettings
-  
-  import definitions.{ findNamedMember, findMemberFromRoot }
 
   // alternate constructors ------------------------------------------
 
@@ -60,6 +60,11 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
   // it is difficult for sbt to work around the ambiguity errors which result.
   type AbstractFileType = scala.tools.nsc.io.AbstractFile
 
+  override def isSameFile(f1: AbstractFile, f2: AbstractFile) = (
+    // Cheap check before canonicalization
+    (f1.path == f2.path) || (f1.canonicalPath == f2.canonicalPath)
+  )
+
   def mkAttributedQualifier(tpe: Type, termSym: Symbol): Tree = gen.mkAttributedQualifier(tpe, termSym)
   
   def picklerPhase: Phase = if (currentRun.isDefined) currentRun.picklerPhase else NoPhase
@@ -68,11 +73,11 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
 
   type ThisPlatform = Platform { val global: Global.this.type }
 
-  lazy val platform: ThisPlatform =
-    if (forMSIL) new { val global: Global.this.type = Global.this } with MSILPlatform
-    else new { val global: Global.this.type = Global.this } with JavaPlatform
+  lazy val platform: ThisPlatform = new { val global: Global.this.type = Global.this } with JavaPlatform
 
-  def classPath: ClassPath[platform.BinaryRepr] = platform.classPath
+  def classPath = classProvider
+  def classProvider: CompilerClassProvider = platform.classProvider
+  // def classProvider
   def rootLoader: LazyType = platform.rootLoader
 
   // sub-components --------------------------------------------------
@@ -195,6 +200,10 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
     if (settings.debug.value)
       body
   }
+  @inline final def vinform(msg: => String) {
+    if (settings.verbose.value || sys.props.contains("scalac.trace"))
+      inform(msg)
+  }
   // Warnings issued only under -Ydebug.  For messages which should reach
   // developer ears, but are not adequately actionable by users.
   @inline final override def debugwarn(msg: => String) {
@@ -282,8 +291,8 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
 
   if (opt.verbose || opt.logClasspath) {
     // Uses the "do not truncate" inform
-    informComplete("[search path for source files: " + classPath.sourcepaths.mkString(",") + "]")
-    informComplete("[search path for class files: " + classPath.asClasspathString + "]")
+    // informComplete("[search path for source files: " + classProvider.sourcePathString + "]")
+    informComplete("[search path for class files: " + classProvider.classPath + "]")
   }
 
   object opt extends AestheticSettings {
@@ -1053,14 +1062,12 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
               // the following classPath.findClass { ... } code cannot be moved here.
           }
       }
-      for (fullname <- toReload)
-        classPath.findClass(fullname) match {
-          case Some(classRep) =>
-            if (settings.verbose.value) inform("[reset] reinit "+fullname)
-            loaders.initializeFromClassPath(root, classRep)
-          case _ =>
-        }
-    } catch {
+      for (fullname <- toReload ; rep <- classProvider.classRep(fullname)) {
+        if (settings.verbose.value) inform("[reset] reinit "+fullname)
+        loaders.initializeFromClassRep(root, rep)
+      }
+    }
+    catch {
       case ex: Throwable =>
         // this handler should not be nessasary, but it seems that `fsc`
         // eats exceptions if they appear here. Need to find out the cause for
@@ -1151,7 +1158,6 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
 
     // ----------- Units and top-level classes and objects --------
 
-
     /** add unit to be compiled in this run */
     private def addUnit(unit: CompilationUnit) {
       unitbuf += unit
@@ -1237,7 +1243,7 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
     def reportCompileErrors() {
       if (reporter.hasErrors) {
         for ((sym, file) <- symSource.iterator) {
-          sym.reset(new loaders.SourcefileLoader(file))
+          sym.reset(new loaders.SourcefileLoader(scala.io.internal.ClassSourceFile(file)))
           if (sym.isTerm)
             sym.moduleClass reset loaders.moduleClassLoader
         }
@@ -1496,6 +1502,21 @@ class Global(var currentSettings: Settings, var reporter: Reporter) extends Symb
     afterPhase(phase) { currentRun.units foreach (treePrinter.print(_)) }
   }
 
+  private def findMemberFromRoot(fullName: Name): Symbol = {
+    val segs = nme.segments(fullName.toString, fullName.isTermName)
+    if (segs.isEmpty) NoSymbol
+    else findNamedMember(segs.tail, definitions.RootClass.info member segs.head)
+  }
+
+  private def findNamedMember(fullName: Name, root: Symbol): Symbol = {
+    val segs = nme.segments(fullName.toString, fullName.isTermName)
+    if (segs.isEmpty || segs.head != root.simpleName) NoSymbol
+    else findNamedMember(segs.tail, root)
+  }
+  private def findNamedMember(segs: List[Name], root: Symbol): Symbol =
+    if (segs.isEmpty) root
+    else findNamedMember(segs.tail, root.info member segs.head)
+
   /** We resolve the class/object ambiguity by passing a type/term name.
    */
   def showDef(fullName: Name, declsOnly: Boolean, ph: Phase) = {
@@ -1587,7 +1608,8 @@ object Global {
     // late, so we have to duplicate it here.  Classpath is too tightly coupled,
     // it is a construct external to the compiler and should be treated as such.
     val parentLoader = settings.explicitParentLoader getOrElse getClass.getClassLoader
-    val loader       = ScalaClassLoader.fromURLs(new PathResolver(settings).result.asURLs, parentLoader)
+    val loader: ScalaClassLoader = null
+      // ScalaClassLoader.fromURLs(new PathResolver(settings).result.urls, parentLoader)
     val name         = settings.globalClass.value
     val clazz        = Class.forName(name, true, loader)
     val cons         = clazz.getConstructor(classOf[Settings], classOf[Reporter])

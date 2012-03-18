@@ -11,15 +11,12 @@ package nest
 import java.io.{ File, FilenameFilter, IOException, StringWriter }
 import java.net.URI
 import scala.util.Properties.{ propOrElse, scalaCmd, scalacCmd }
-import scala.tools.util.PathResolver
 import scala.tools.nsc.{ io, util }
 import util.{ ClassPath }
 import io.{ Path, Directory }
 import File.pathSeparator
 import ClassPath.{ join }
-import PathResolver.{ Environment, Defaults }
 import RunnerUtils._
-
 
 class ConsoleFileManager extends FileManager {
   var testBuild: Option[String] = PartestDefaults.testBuild

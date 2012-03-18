@@ -7,8 +7,9 @@ trait Required { self: SymbolTable =>
 
   type AbstractFileType >: Null <: {
     def path: String
-    def canonicalPath: String
   }
+
+  def isSameFile(f1: AbstractFileType, f2: AbstractFileType): Boolean
 
   def picklerPhase: Phase
 

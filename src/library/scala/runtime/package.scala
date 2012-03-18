@@ -10,4 +10,11 @@ package object runtime {
   @deprecated("Use `scala.Long` instead.", "2.9.0")    val Long    = scala.Long
   @deprecated("Use `scala.Float` instead.", "2.9.0")   val Float   = scala.Float
   @deprecated("Use `scala.Double` instead.", "2.9.0")  val Double  = scala.Double
+
+  def printResult[T](msg: String)(result: T): T = {
+    // Console.err.println(msg + ": " + result)
+    // println("... at ")
+    // (new Throwable).getStackTrace drop 2 take 10 foreach println
+    result
+  }
 }

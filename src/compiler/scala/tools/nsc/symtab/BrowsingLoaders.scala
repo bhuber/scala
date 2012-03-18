@@ -8,6 +8,8 @@ package symtab
 
 import scala.tools.nsc.util.BatchSourceFile
 import scala.tools.nsc.io.AbstractFile
+import scala.io.ClassProvision.ClassSourceFile
+import scala.io.internal.ClassSourceFile._
 
 /** A subclass of SymbolLoaders that implements browsing behavior.
  *  This class should be used whenever file dependencies and recompile sets
@@ -15,7 +17,6 @@ import scala.tools.nsc.io.AbstractFile
  */
 abstract class BrowsingLoaders extends SymbolLoaders {
   import global._
-
   import syntaxAnalyzer.{OutlineParser, MalformedInput}
 
   /** In browse mode, it can happen that an encountered symbol is already

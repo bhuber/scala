@@ -10,12 +10,27 @@ package io
 import java.io.{ FileOutputStream, IOException, InputStream, OutputStream, BufferedOutputStream }
 import java.net.URL
 import scala.collection.mutable.ArrayBuffer
+import scala.io.ClassProvision._
 
 /**
  * @author Philippe Altherr
  * @version 1.0, 23/03/2004
  */
 object AbstractFile {
+  implicit def fromClassSourceFile(f: ClassSourceFile): AbstractFile = {
+    if (f eq NoClassSourceFile) NoAbstractFile
+    else new VirtualFile(f.name, f.path) {
+      override def toCharArray: Array[Char] = f.chars
+      override def toByteArray: Array[Byte] = f.bytes
+    }
+  }
+  implicit def fromClassBinaryFile(f: ClassBinaryFile): AbstractFile = {
+    if (f eq NoClassBinaryFile) NoAbstractFile
+    else new VirtualFile(f.name, f.path) {
+      override def toByteArray: Array[Byte] = f.bytes
+    }
+  }
+
   /** Returns "getFile(new File(path))". */
   def getFile(path: String): AbstractFile = getFile(File(path))
   def getFile(path: Path): AbstractFile = getFile(path.toFile)
@@ -254,4 +269,7 @@ abstract class AbstractFile extends AnyRef with Iterable[AbstractFile] {
   /** Returns the path of this abstract file. */
   override def toString() = path
 
+  override def equals(other: Any) = {
+    runtime.printResult("Comparing AbstractFiles: " + ((this, other)))(super.equals(other))
+  }
 }

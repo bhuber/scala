@@ -165,18 +165,23 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
           varSym
         }
 
-        def addStaticMethodToClass(forBody: (Symbol, Symbol) => Tree): Symbol = {
-          val methSym = currentClass.newMethod(mkTerm(nme.reflMethodName), ad.pos, STATIC | SYNTHETIC)
-          val params  = methSym.newSyntheticValueParams(List(ClassClass.tpe))
-          methSym setInfoAndEnter MethodType(params, MethodClass.tpe)
+        def addStaticMethodToClass(forName: String, forArgsTypes: List[Type], forResultType: Type)
+                                  (forBody: Pair[Symbol, List[Symbol]] => Tree): Symbol = {
 
-          val methDef = typedPos(DefDef(methSym, forBody(methSym, params.head)))
+          val methSym = currentClass.newMethod(mkTerm(forName), ad.pos, STATIC | SYNTHETIC)
+          val params  = methSym.newSyntheticValueParams(forArgsTypes)
+          methSym setInfoAndEnter MethodType(params, forResultType)
+
+          val methDef = typedPos( DefDef(methSym, forBody(methSym -> params)) )
           newStaticMembers append transform(methDef)
+
           methSym
         }
 
         def fromTypesToClassArrayLiteral(paramTypes: List[Type]): Tree =
           ArrayValue(TypeTree(ClassClass.tpe), paramTypes map LIT)
+
+        def theTypeClassArray = arrayType(ClassClass.tpe)
 
         /* ... */
         def reflectiveMethodCache(method: String, paramTypes: List[Type]): Symbol = dispatchType match {
@@ -192,11 +197,12 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
               */
 
               val reflParamsCacheSym: Symbol =
-                addStaticVariableToClass(nme.reflParamsCacheName, arrayType(ClassClass.tpe), fromTypesToClassArrayLiteral(paramTypes), true)
+                addStaticVariableToClass(nme.reflParamsCacheName, theTypeClassArray, fromTypesToClassArrayLiteral(paramTypes), true)
 
-              addStaticMethodToClass((_, forReceiverSym) =>
-                gen.mkMethodCall(REF(forReceiverSym), Class_getMethod, Nil, List(LIT(method), safeREF(reflParamsCacheSym)))
-              )
+              addStaticMethodToClass(nme.reflMethodName, List(ClassClass.tpe), MethodClass.tpe) {
+                case Pair(reflMethodSym, List(forReceiverSym)) =>
+                  (REF(forReceiverSym) DOT Class_getMethod)(LIT(method), safeREF(reflParamsCacheSym))
+              }
 
             case MONO_CACHE =>
 
@@ -220,7 +226,7 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
               */
 
               val reflParamsCacheSym: Symbol =
-                addStaticVariableToClass(nme.reflParamsCacheName, arrayType(ClassClass.tpe), fromTypesToClassArrayLiteral(paramTypes), true)
+                addStaticVariableToClass(nme.reflParamsCacheName, theTypeClassArray, fromTypesToClassArrayLiteral(paramTypes), true)
 
               val reflMethodCacheSym: Symbol =
                 addStaticVariableToClass(nme.reflMethodCacheName, MethodClass.tpe, NULL, false)
@@ -231,16 +237,17 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
               def isCacheEmpty(receiver: Symbol): Tree =
                 reflClassCacheSym.IS_NULL() OR (reflClassCacheSym.GET() OBJ_NE REF(receiver))
 
-              addStaticMethodToClass((_, forReceiverSym) =>
-                BLOCK(
-                  IF (isCacheEmpty(forReceiverSym)) THEN BLOCK(
-                    safeREF(reflMethodCacheSym) === ((REF(forReceiverSym) DOT Class_getMethod)(LIT(method), safeREF(reflParamsCacheSym))) ,
-                    safeREF(reflClassCacheSym) === gen.mkSoftRef(REF(forReceiverSym)),
-                    UNIT
-                  ) ENDIF,
-                  safeREF(reflMethodCacheSym)
-                )
-              )
+              addStaticMethodToClass(nme.reflMethodName, List(ClassClass.tpe), MethodClass.tpe) {
+                case Pair(reflMethodSym, List(forReceiverSym)) =>
+                  BLOCK(
+                    IF (isCacheEmpty(forReceiverSym)) THEN BLOCK(
+                      safeREF(reflMethodCacheSym) === ((REF(forReceiverSym) DOT Class_getMethod)(LIT(method), safeREF(reflParamsCacheSym))) ,
+                      safeREF(reflClassCacheSym) === gen.mkSoftRef(REF(forReceiverSym)),
+                      UNIT
+                    ) ENDIF,
+                    safeREF(reflMethodCacheSym)
+                  )
+              }
 
             case POLY_CACHE =>
 
@@ -266,7 +273,7 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
               */
 
               val reflParamsCacheSym: Symbol =
-                addStaticVariableToClass(nme.reflParamsCacheName, arrayType(ClassClass.tpe), fromTypesToClassArrayLiteral(paramTypes), true)
+                addStaticVariableToClass(nme.reflParamsCacheName, theTypeClassArray, fromTypesToClassArrayLiteral(paramTypes), true)
 
               def mkNewPolyCache = gen.mkSoftRef(NEW(TypeTree(EmptyMethodCacheClass.tpe)))
               val reflPolyCacheSym: Symbol = (
@@ -274,25 +281,26 @@ abstract class CleanUp extends Transform with ast.TreeDSL {
               )
               def getPolyCache = gen.mkCast(fn(safeREF(reflPolyCacheSym), nme.get), MethodCacheClass.tpe)
 
-              addStaticMethodToClass((reflMethodSym, forReceiverSym) => {
-                val methodSym = reflMethodSym.newVariable(mkTerm("method"), ad.pos) setInfo MethodClass.tpe
+              addStaticMethodToClass(nme.reflMethodName, List(ClassClass.tpe), MethodClass.tpe)
+                { case Pair(reflMethodSym, List(forReceiverSym)) =>
+                  val methodSym = reflMethodSym.newVariable(mkTerm("method"), ad.pos) setInfo MethodClass.tpe
 
-                BLOCK(
-                  IF (getPolyCache OBJ_EQ NULL) THEN (safeREF(reflPolyCacheSym) === mkNewPolyCache) ENDIF,
-                  VAL(methodSym) === ((getPolyCache DOT methodCache_find)(REF(forReceiverSym))) ,
-                  IF (REF(methodSym) OBJ_!= NULL) .
-                    THEN (Return(REF(methodSym)))
-                  ELSE {
-                    def methodSymRHS  = ((REF(forReceiverSym) DOT Class_getMethod)(LIT(method), safeREF(reflParamsCacheSym)))
-                    def cacheRHS      = ((getPolyCache DOT methodCache_add)(REF(forReceiverSym), REF(methodSym)))
-                    BLOCK(
-                      REF(methodSym)        === (REF(ensureAccessibleMethod) APPLY (methodSymRHS)),
-                      safeREF(reflPolyCacheSym) === gen.mkSoftRef(cacheRHS),
-                      Return(REF(methodSym))
-                    )
-                  }
-                )
-              })
+                  BLOCK(
+                    IF (getPolyCache OBJ_EQ NULL) THEN (safeREF(reflPolyCacheSym) === mkNewPolyCache) ENDIF,
+                    VAL(methodSym) === ((getPolyCache DOT methodCache_find)(REF(forReceiverSym))) ,
+                    IF (REF(methodSym) OBJ_!= NULL) .
+                      THEN (Return(REF(methodSym)))
+                    ELSE {
+                      def methodSymRHS  = ((REF(forReceiverSym) DOT Class_getMethod)(LIT(method), safeREF(reflParamsCacheSym)))
+                      def cacheRHS      = ((getPolyCache DOT methodCache_add)(REF(forReceiverSym), REF(methodSym)))
+                      BLOCK(
+                        REF(methodSym)        === (REF(ensureAccessibleMethod) APPLY (methodSymRHS)),
+                        safeREF(reflPolyCacheSym) === gen.mkSoftRef(cacheRHS),
+                        Return(REF(methodSym))
+                      )
+                    }
+                  )
+                }
         }
 
         /* ### HANDLING METHODS NORMALLY COMPILED TO OPERATORS ### */

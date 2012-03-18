@@ -12,7 +12,7 @@ import scala.util.control.Breaks._
 import scala.tools.nsc.symtab.Flags
 
 import dependencies._
-import util.{FakePos, ClassPath}
+import util.{FakePos, ClassPath,CompilerClassProvider}
 import io.AbstractFile
 import scala.tools.util.PathResolver
 
@@ -35,7 +35,7 @@ class RefinedBuildManager(val settings: Settings) extends Changes with BuildMana
       phasesSet += dependencyAnalysis
     }
     lazy val _classpath = new NoSourcePathPathResolver(settings).result
-    override def classPath = _classpath.asInstanceOf[ClassPath[platform.BinaryRepr]]
+    override def classPath = _classpath //.asInstanceOf[ClassPath]
        // See discussion in JavaPlatForm for why we need a cast here.
 
     def newRun() = new Run()

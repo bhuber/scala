@@ -12,6 +12,7 @@ import mutable.ListBuffer
 import backend.icode._
 import ClassfileConstants._
 import scala.reflect.internal.Flags._
+import scala.io.ClassProvision._
 
 /** ICode reader from Java bytecode.
  *
@@ -40,9 +41,9 @@ abstract class ICodeReader extends ClassfileParser {
     log("Reading class: " + cls + " isScalaModule?: " + isScalaModule)
     val name = cls.javaClassName
 
-    classPath.findSourceFile(name) match {
-      case Some(classFile) => parse(classFile, cls)
-      case _               => MissingRequirementError.notFound("Could not find bytecode for " + cls)
+    classProvider byteCode name match {
+      case NoClassBinaryFile => MissingRequirementError.notFound("Could not find bytecode for " + cls)
+      case classFile       => parse(classFile, cls)
     }
 
     (staticCode, instanceCode)

@@ -6,7 +6,6 @@ package scala.tools
 
 import java.io.{ FileNotFoundException, File => JFile }
 import nsc.io.{ Path, Directory, File => SFile }
-import util.{ PathResolver }
 import nsc.Properties.{ propOrElse, propOrNone, propOrEmpty }
 import scala.sys.process.javaVmArguments
 

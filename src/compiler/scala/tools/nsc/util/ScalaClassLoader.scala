@@ -16,10 +16,6 @@ import ScalaClassLoader._
 import scala.util.control.Exception.{ catching }
 // import Exceptional.unwrap
 
-trait HasClassPath {
-  def classPathURLs: Seq[URL]
-}
-
 /** A wrapper around java.lang.ClassLoader to lower the annoyance
  *  of java reflection.
  */
@@ -133,13 +129,13 @@ object ScalaClassLoader {
    *  from the supplied string.
    */
   def guessClassPathString(default: String = ""): String = {
-    val classpathURLs = contextChain flatMap {
-      case x: HasClassPath    => x.classPathURLs
+    val urls = contextChain flatMap {
+      case x: HasClassPath    => x.classPathUrls
       case x: JURLClassLoader => x.getURLs.toSeq
       case _                  => Nil
     }
-    if (classpathURLs.isEmpty) default
-    else JavaClassPath.fromURLs(classpathURLs).asClasspathString
+    if (urls.isEmpty) default
+    else JavaClassPath.fromURLs(urls).asClasspathString
   }
 
   def loaderChain(head: JClassLoader) = {
@@ -161,10 +157,12 @@ object ScalaClassLoader {
          with ScalaClassLoader
          with HasClassPath {
 
-    private var classloaderURLs: Seq[URL] = urls
+    private var classloaderURLs: List[URL] = urls.toList
     private def classpathString = ClassPath.fromURLs(urls: _*)
-    def classPathURLs: Seq[URL] = classloaderURLs
-    def classPath: ClassPath[_] = JavaClassPath fromURLs classPathURLs
+
+    def classPathURLs: List[URL] = classloaderURLs
+    def classPath: String = ClassPath.fromURLs(classloaderURLs: _*)
+    def legacyClassPath = JavaClassPath fromURLs classPathURLs
 
     /** Override to widen to public */
     override def addURL(url: URL) = {

@@ -21,13 +21,9 @@ object Which {
     import cp._
 
     for (name <- names) {
-      def fail() = println("Could not find: %s".format(name))
-      (cp findClass name) match {
-        case Some(classRep) => classRep.binary match {
-          case Some(f)  => println("%s is %s".format(name, f))
-          case _        => fail
-        }
-        case _ => fail
+      cp classRep name match {
+        case classRep if classRep.hasBinary => println("%s is %s".format(name, classRep.binary))
+        case _                              => println("Could not find: %s".format(name))
       }
     }
   }

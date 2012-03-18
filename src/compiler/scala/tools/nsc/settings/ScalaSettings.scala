@@ -25,7 +25,7 @@ trait ScalaSettings extends AbsScalaSettings
    *  of the classpath:
    *
    *  - If -classpath or -cp is given, it is that
-   *  - Otherwise, if CLASSPATH is set, it is that
+   *  - Otherwise, if environment variable CLASSPATH is set, it is that
    *  - If neither of those, then "." is used.
    */
   protected def defaultClasspath = sys.env.getOrElse("CLASSPATH", ".")
