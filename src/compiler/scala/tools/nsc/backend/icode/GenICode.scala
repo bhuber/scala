@@ -26,7 +26,7 @@ abstract class GenICode extends SubComponent  {
   import definitions.{
     ArrayClass, ObjectClass, ThrowableClass, StringClass, StringModule, AnyRefClass,
     Object_equals, Object_isInstanceOf, Object_asInstanceOf, ScalaRunTimeModule,
-    BoxedNumberClass, BoxedCharacterClass,
+    BoxedNumberClass, BoxedCharacterClass, PostConstructorClass, PostConstructorMethod,
     getMember
   }
   import scalaPrimitives.{
@@ -806,7 +806,8 @@ abstract class GenICode extends SubComponent  {
                   ctx1.bb.emit(CIL_NEWOBJ(ctor), tree.pos)
                   ctx1
                 }
-              } else {
+              }
+              else {
                 val nw = NEW(rt)
                 ctx.bb.emit(nw, tree.pos)
                 ctx.bb.emit(DUP(generatedType))
@@ -815,6 +816,12 @@ abstract class GenICode extends SubComponent  {
                 val init = CALL_METHOD(ctor, Static(true))
                 nw.init = init
                 ctx1.bb.emit(init, tree.pos)
+                // Inject .postConstructor call for explicitly instantiated objects.
+                if (cls isSubClass PostConstructorClass) {
+                  log("Injected postConstructor call after 'new %s' in body of %s".format(cls, ctx1.defdef.symbol.defString))
+                  ctx1.bb.emit(DUP(generatedType), tree.pos)
+                  ctx1.bb.emit(CALL_METHOD(PostConstructorMethod, Dynamic), tree.pos)
+                }
                 ctx1
               }
               ctx2

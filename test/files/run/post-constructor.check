@@ -1,0 +1,10 @@
+Foo#init, value = null
+Test#init, value = abc
+Foo#postConstructor, value = abc (with length 3)
+Test#main, value = abc
+A ConstructionCode
+B ConstructionCode
+C ConstructionCode
+A PostConstructionCode
+B PostConstructionCode
+C PostConstructionCode

@@ -1,0 +1,20 @@
+A#init: null   (class Test$$anon$1)
+A#init: bar   (class Test$$anon$2)
+A#init: null   (class B1$)
+B1#init: bar
+A#init: bar   (class B2$)
+B2#init: bar
+A#init: bar   (class B3$)
+B3#init: bar
+A#init: bar   (class B4$)
+B4#init: bar
+A#init: null   (class C1)
+C1#init: bar
+A#init: bar   (class C2)
+C2#init: bar
+A#init: bar   (class C3)
+C3#init: bar
+A#init: bar   (class C4)
+C3#init: bar
+A#init: bar   (class D)
+D#init: bar

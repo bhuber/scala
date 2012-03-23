@@ -366,6 +366,7 @@ trait StdNames extends NameManglers { self: SymbolTable =>
     val notify_ : NameType             = "notify"
     val null_ : NameType               = "null"
     val ofDim: NameType                = "ofDim"
+    val postConstructor: NameType      = "postConstructor"
     val productArity: NameType         = "productArity"
     val productElement: NameType       = "productElement"
     val productIterator: NameType      = "productIterator"

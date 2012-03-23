@@ -418,7 +418,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
                                   javaName(superClass),
                                   ifaces,
                                   c.cunit.source.toString)
-
+      
       if (isStaticModule(c.symbol) || serialVUID != None || isParcelableClass) {
         if (isStaticModule(c.symbol))
           addModuleInstanceField
@@ -985,6 +985,17 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
                         nme.MODULE_INSTANCE_FIELD.toString,
                         jclass.getType())
     }
+    
+    /** Creates a new block at the end of the method and
+     *  modifies the previous last block to jump to it.
+     */
+    def prepareForAppend(m: IMethod): BasicBlock = {
+      val oldLast = m.lastBlock
+      val newLast = m.newBlock()
+      
+      oldLast.replaceInstruction(oldLast.length - 1, JUMP(newLast))
+      newLast
+    }
 
     def addStaticInit(cls: JClass, mopt: Option[IMethod]) {
       val clinitMethod = cls.addNewMethod(PublicStatic,
@@ -996,9 +1007,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
 
       mopt match {
        	case Some(m) =>
-          val oldLastBlock = m.lastBlock
-          val lastBlock = m.newBlock()
-          oldLastBlock.replaceInstruction(oldLastBlock.length - 1, JUMP(lastBlock))
+       	  val lastBlock = prepareForAppend(m)
 
           if (isStaticModule(clasz.symbol)) {
             // call object's private ctor from static ctor
@@ -1019,8 +1028,14 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
           if (isParcelableClass)
             addCreatorCode(BytecodeGenerator.this, lastBlock)
 
-          lastBlock emit RETURN(UNIT)
-          lastBlock.close
+          // Last action before returning from static constructor:
+          // call .postConstructor if present.
+          if (clasz.symbol isSubClass PostConstructorClass) {
+            log("Static initializer calls postConstructor in " + clasz.symbol)
+            lastBlock emit THIS(clasz.symbol)
+            lastBlock emit CALL_METHOD(PostConstructorMethod, Static(true))
+          }
+          lastBlock emitOnly RETURN(UNIT)
 
        	  method = m
        	  jmethod = clinitMethod
@@ -1042,13 +1057,20 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
         val fieldName = "serialVersionUID"
         jclass.addNewField(PublicStaticFinal, fieldName, JType.LONG)
         clinit emitPUSH value
-        clinit.emitPUSH(value)
+        clinit emitPUSH value
         clinit.emitPUTSTATIC(jclass.getName(), fieldName, JType.LONG)
       }
 
       if (isParcelableClass)
         legacyAddCreatorCode(BytecodeGenerator.this, clinit)
 
+      // Last action before returning from static constructor:
+      // call .postConstructor if present.
+      if (clasz.symbol isSubClass PostConstructorClass) {
+        log("Static initializer calls postConstructor in " + clasz.symbol)
+        clinit.emitGETSTATIC(cls.getName(), nme.MODULE_INSTANCE_FIELD.toString, cls.getType())
+        clinit.emitINVOKEINTERFACE(javaName(PostConstructorClass), nme.postConstructor, JMethodType.ARGLESS_VOID_FUNCTION)
+      }
       clinit.emitRETURN()
     }
 
@@ -1280,9 +1302,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
               jname == JMethod.INSTANCE_CONSTRUCTOR_NAME) {
             isModuleInitialized = true
             jcode.emitALOAD_0()
-            jcode.emitPUTSTATIC(jclass.getName(),
-                                nme.MODULE_INSTANCE_FIELD.toString,
-                                jclass.getType())
+            jcode.emitPUTSTATIC(jclass.getName(), nme.MODULE_INSTANCE_FIELD.toString, jclass.getType())
           }
         }
 
@@ -1892,6 +1912,9 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
   }
 
   private def mkFlags(args: Int*) = args.foldLeft(0)(_ | _)
+  def isToplevelModuleConstructor(sym: Symbol) = (
+    sym.isPrimaryConstructor && isTopLevelModule(sym.owner)
+  )
 
   /**
    * Return the Java modifiers for the given symbol.
@@ -1912,8 +1935,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
   def javaFlags(sym: Symbol): Int = {
     // constructors of module classes should be private
     // PP: why are they only being marked private at this stage and not earlier?
-    val privateFlag =
-      sym.isPrivate || (sym.isPrimaryConstructor && isTopLevelModule(sym.owner))
+    val privateFlag = sym.isPrivate || isToplevelModuleConstructor(sym)
 
     // This does not check .isFinal (which checks flags for the FINAL flag),
     // instead checking rawflags for that flag so as to exclude symbols which
@@ -1948,7 +1970,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
   }
 
   def isTopLevelModule(sym: Symbol): Boolean =
-    afterPickler { sym.isModuleClass && !sym.isImplClass && !sym.isNestedClass }
+    afterPickler(sym.isModuleClass && !sym.isImplClass && !sym.isNestedClass)
 
   def isStaticModule(sym: Symbol): Boolean = {
     sym.isModuleClass && !sym.isImplClass && !sym.isLifted

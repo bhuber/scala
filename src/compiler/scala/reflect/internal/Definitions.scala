@@ -330,6 +330,8 @@ trait Definitions extends reflect.api.StandardDefinitions {
     lazy val NotNullClass     = getRequiredClass("scala.NotNull")
     lazy val ScalaNumberClass           = getRequiredClass("scala.math.ScalaNumber")
     lazy val TraitSetterAnnotationClass = getRequiredClass("scala.runtime.TraitSetter")
+    lazy val PostConstructorClass = getRequiredClass("scala.PostConstructor")
+    lazy val PostConstructorMethod = getMember(PostConstructorClass, nme.postConstructor)
     lazy val DelayedInitClass = getRequiredClass("scala.DelayedInit")
       def delayedInitMethod = getMember(DelayedInitClass, nme.delayedInit)
       // a dummy value that communicates that a delayedInit call is compiler-generated
