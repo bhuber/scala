@@ -100,7 +100,7 @@ trait Implicits {
     improvesCache.clear()
   }
 
-  private val ManifestSymbols = Set(PartialManifestClass, FullManifestClass, OptManifestClass)
+  private val ManifestSymbols = Set(PartialManifestClass, FullManifestClass, OptManifestClass, ArrayManifestClass)
 
   /* Map a polytype to one in which all type parameters and argument-dependent types are replaced by wildcards.
    * Consider `implicit def b(implicit x: A): x.T = error("")`. We need to approximate DebruijnIndex types
@@ -1085,31 +1085,41 @@ trait Implicits {
         implicitInfoss1
     }
 
+    /** Creates a tree along the lines of what `implicitly[T]` would supply for tp. */
+    private def implicitValueOfType(tp: Type): Tree =
+      inferImplicit(tree, tp, true, false, context).tree
+
     /** Creates a tree that calls the relevant factory method in object
       * reflect.Manifest for type 'tp'. An EmptyTree is returned if
       * no manifest is found. todo: make this instantiate take type params as well?
       */
-    private def manifestOfType(tp: Type, full: Boolean): SearchResult = {
+    private def manifestOfType(tp: Type, manifestSymbol: Symbol): SearchResult = {
+      def companion = manifestSymbol.companionSymbol
+      def isFull    = manifestSymbol eq FullManifestClass
+      def subSymbol = if (isFull) FullManifestClass else OptManifestClass
 
-      /** Creates a tree that calls the factory method called constructor in object reflect.Manifest */
-      def manifestFactoryCall(constructor: String, tparg: Type, args: Tree*): Tree =
-        if (args contains EmptyTree) EmptyTree
-        else typedPos(tree.pos.focus) {
-          val mani = gen.mkManifestFactoryCall(full, constructor, tparg, args.toList)
-          if (settings.debug.value) println("generated manifest: "+mani) // DEBUG
-          mani
-        }
+      /** Re-wraps a type in a manifest before calling inferImplicit on the result */
+      def findManifest(tp: Type)    = implicitValueOfType(appliedType(manifestSymbol.typeConstructor, List(tp)))
+      def findSubManifest(tp: Type) = implicitValueOfType(appliedType(subSymbol.typeConstructor, List(tp)))
 
       /** Creates a tree representing one of the singleton manifests.*/
       def findSingletonManifest(name: String) = typedPos(tree.pos.focus) {
         Select(gen.mkAttributedRef(FullManifestModule), name)
       }
 
-      /** Re-wraps a type in a manifest before calling inferImplicit on the result */
-      def findManifest(tp: Type, manifestClass: Symbol = if (full) FullManifestClass else PartialManifestClass) =
-        inferImplicit(tree, appliedType(manifestClass.typeConstructor, List(tp)), true, false, context).tree
+      /** Creates a tree that calls the factory method called constructor in object reflect.Manifest */
+      def manifestFactoryCall(constructor: String, tparg: Type, args: Tree*): Tree = (
+        if (args contains EmptyTree) EmptyTree
+        else companion.info nonPrivateMember newTermName(constructor) match {
+          case NoSymbol =>
+            log("No factory method " + constructor + " found in " + companion)
+            EmptyTree
+          case m        =>
+            debuglog("generated manifest: "+m)
+            typedPos(tree.pos.focus)(gen.mkMethodCall(m, List(tparg), args.toList))
+        }
+      )
 
-      def findSubManifest(tp: Type) = findManifest(tp, if (full) FullManifestClass else OptManifestClass)
       def mot(tp0: Type, from: List[Symbol], to: List[Type]): SearchResult = {
         implicit def wrapResult(tree: Tree): SearchResult =
           if (tree == EmptyTree) SearchFailure else new SearchResult(tree, if (from.isEmpty) EmptyTreeTypeSubstituter else new TreeTypeSubstituter(from, to))
@@ -1121,7 +1131,7 @@ trait Implicits {
             if (containsExistential(tp1)) EmptyTree
             else manifestFactoryCall("singleType", tp, gen.mkAttributedQualifier(tp1))
           case ConstantType(value) =>
-            manifestOfType(tp1.deconst, full)
+            manifestOfType(tp1.deconst, manifestSymbol)
           case TypeRef(pre, sym, args) =>
             if (isPrimitiveValueClass(sym) || isPhantomClass(sym)) {
               findSingletonManifest(sym.name.toString)
@@ -1142,7 +1152,7 @@ trait Implicits {
                 "classType", tp,
                 (if ((pre eq NoPrefix) || pre.typeSymbol.isStaticOwner) suffix
                  else findSubManifest(pre) :: suffix): _*)
-            } else if (sym.isExistentiallyBound && full) {
+            } else if (sym.isExistentiallyBound && isFull) {
               manifestFactoryCall("wildcardType", tp,
                                   findManifest(tp.bounds.lo), findManifest(tp.bounds.hi))
             }
@@ -1155,10 +1165,10 @@ trait Implicits {
               // a manifest should have been found by normal searchImplicit
               EmptyTree
             }
-          case RefinedType(parents, decls) => // !!! not yet: if !full || decls.isEmpty =>
+          case RefinedType(parents, decls) => // !!! not yet: if !isFull || decls.isEmpty =>
             // refinement is not generated yet
             if (hasLength(parents, 1)) findManifest(parents.head)
-            else if (full) manifestFactoryCall("intersectionType", tp, parents map findSubManifest: _*)
+            else if (isFull) manifestFactoryCall("intersectionType", tp, parents map findSubManifest: _*)
             else mot(erasure.intersectionDominator(parents), from, to)
           case ExistentialType(tparams, result) =>
             mot(tp1.skolemizeExistential, from, to)
@@ -1180,11 +1190,11 @@ trait Implicits {
     def wrapResult(tree: Tree): SearchResult =
       if (tree == EmptyTree) SearchFailure else new SearchResult(tree, EmptyTreeTypeSubstituter)
 
-    /** The manifest corresponding to type `pt`, provided `pt` is an instance of Manifest.
+    /** The manifest corresponding to type `pt`, provided `pt` is a variety of Manifest.
      */
     private def implicitManifestOrOfExpectedType(pt: Type): SearchResult = pt.dealias match {
       case TypeRef(_, sym, args) if ManifestSymbols(sym) =>
-        manifestOfType(args.head, sym == FullManifestClass) match {
+        manifestOfType(args.head, sym) match {
           case SearchFailure if sym == OptManifestClass => wrapResult(gen.mkAttributedRef(NoManifest))
           case result                                   => result
         }

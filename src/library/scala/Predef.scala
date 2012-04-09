@@ -105,10 +105,12 @@ object Predef extends LowPriorityImplicits {
   val ClassManifest     = scala.reflect.ClassManifest
   val Manifest          = scala.reflect.Manifest
   val NoManifest        = scala.reflect.NoManifest
+  type ArrayManifest[T] = scala.reflect.ArrayManifest[T]
 
   def manifest[T](implicit m: Manifest[T])           = m
   def classManifest[T](implicit m: ClassManifest[T]) = m
   def optManifest[T](implicit m: OptManifest[T])     = m
+  def arrayManifest[T](implicit m: ArrayManifest[T]) = m
 
   // Minor variations on identity functions
   def identity[A](x: A): A         = x    // @see `conforms` for the implicit version

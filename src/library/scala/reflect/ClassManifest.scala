@@ -39,7 +39,7 @@ import java.lang.{ Class => jClass }
  *  be wrong when variance is involved or when a subtype has a different
  *  number of type arguments than a supertype.
  */
-trait ClassManifest[T] extends OptManifest[T] with Equals with Serializable {
+trait ClassManifest[T] extends OptManifest[T] with Equals with ArrayManifest[T] with Serializable {
   /** A class representing the type `U` to which `T` would be erased. Note
     * that there is no subtyping relationship between `T` and `U`. */
   def erasure: jClass[_]

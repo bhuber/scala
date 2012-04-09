@@ -4615,8 +4615,10 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
                 MultiDimensionalArrayError(tree)
               else {
                 val newArrayApp = atPos(tree.pos) {
-                  val manif = getManifestTree(tree, manifType, false)
-                  new ApplyToImplicitArgs(Select(manif, if (level == 1) "newArray" else "newArray"+level), args)
+                  val creator    = getArrayCreatorTree(tree, manifType)
+                  val methodName = nme.newArray + ( if (level == 1) "" else level )
+
+                  new ApplyToImplicitArgs(Select(creator, methodName), args)
                 }
                 typed(newArrayApp, mode, pt)
               }
@@ -4933,20 +4935,16 @@ trait Typers extends Modes with Adaptations with PatMatVirtualiser {
         true, false, context)
     }
 
-    def getManifestTree(tree: Tree, tp: Type, full: Boolean): Tree = {
-      val manifestOpt = findManifest(tp, full)
-      if (manifestOpt.tree.isEmpty) {
-        MissingManifestError(tree, full, tp)
-      } else {
-        manifestOpt.tree
-      }
+    def getArrayCreatorTree(tree: Tree, tp: Type): Tree = {
+      // Don't want bottom types getting any further than this (SI-4024)
+      val elemType         = if (tp.typeSymbol.isBottomClass) AnyClass.tpe else tp
+      val arrayCreatorType = appliedType(ArrayManifestClass.typeConstructor, List(elemType))
+      val result           = beforeTyper(inferImplicit(EmptyTree, arrayCreatorType, true, false, context)).tree
+
+      if (!result.isEmpty) result
+      else if (elemType.bounds.hi ne elemType) getArrayCreatorTree(tree, elemType.bounds.hi)
+      else MissingManifestError(tree, false, elemType)
     }
-/*
-    def convertToTypeTree(tree: Tree): Tree = tree match {
-      case TypeTree() => tree
-      case _ => TypeTree(tree.tpe)
-    }
-*/
   }
 }
 

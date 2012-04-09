@@ -357,19 +357,13 @@ abstract class UnCurry extends InfoTransform
         // when calling into java varargs, make sure it's an array - see bug #1360
         def sequenceToArray(tree: Tree) = {
           val toArraySym = tree.tpe member nme.toArray
-          assert(toArraySym != NoSymbol)
-          def getManifest(tp: Type): Tree = {
-            val manifestOpt = localTyper.findManifest(tp, false)
-            // Don't want bottom types getting any further than this (SI-4024)
-            if (tp.typeSymbol.isBottomClass) getManifest(AnyClass.tpe)
-            else if (!manifestOpt.tree.isEmpty) manifestOpt.tree
-            else if (tp.bounds.hi ne tp) getManifest(tp.bounds.hi)
-            else localTyper.getManifestTree(tree, tp, false)
-          }
+          assert(toArraySym != NoSymbol, tree.tpe)
+
           afterUncurry {
             localTyper.typedPos(pos) {
-              Apply(gen.mkAttributedSelect(tree, toArraySym),
-                    List(getManifest(tree.tpe.baseType(TraversableClass).typeArgs.head)))
+              val elemType     = tree.tpe.baseType(TraversableClass).typeArgs.head
+              val arrayCreator = localTyper.getArrayCreatorTree(tree, elemType)
+              gen.mkMethodCall(tree, toArraySym, Nil, arrayCreator :: Nil)
             }
           }
         }
