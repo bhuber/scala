@@ -23,7 +23,7 @@ import generic._
  */
 trait GenTraversable[+A]
 extends GenTraversableLike[A, GenTraversable[A]]
-   with GenTraversableOnce[A]
+   with Container[A, GenTraversable]
    with GenericTraversableTemplate[A, GenTraversable]
 {
   def seq: Traversable[A]

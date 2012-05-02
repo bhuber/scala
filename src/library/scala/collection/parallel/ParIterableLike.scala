@@ -11,7 +11,7 @@ package scala.collection.parallel
 
 
 
-
+import scala.collection.Container
 import scala.collection.mutable.Builder
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.IterableLike
@@ -150,6 +150,7 @@ import language.implicitConversions
  */
 trait ParIterableLike[+T, +Repr <: ParIterable[T], +Sequential <: Iterable[T] with IterableLike[T, Sequential]]
 extends GenIterableLike[T, Repr]
+   with Container[T, ParIterable]
    with CustomParallelizable[T, Repr]
    with Parallel
    with HasNewCombiner[T, Repr]

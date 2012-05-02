@@ -107,19 +107,16 @@ class Tuple2Zipped[El1, Repr1, El2, Repr2](
 }
 
 object Tuple2Zipped {
+  import collection.{ Container, GenTraversableOnce }
+  import collection.generic.CanBuildFrom
+
   class Ops[T1, T2](x: (T1, T2)) {
-    def invert[El1, CC1[X] <: TraversableOnce[X], El2, CC2[X] <: TraversableOnce[X], That]
-      (implicit w1: T1 <:< CC1[El1],
-                w2: T2 <:< CC2[El2],
-                bf: collection.generic.CanBuildFrom[CC1[_], (El1, El2), That]
+    def invert[El1, CC1[X] <: GenTraversableOnce[X], El2, CC2[X] <: GenTraversableOnce[X], That]
+      (implicit w1: T1 => Container[El1, CC1],
+                w2: T2 => Container[El2, CC2],
+                bf: CanBuildFrom[T1, (El1, El2), That]
       ): That = {
-        val buf = bf(x._1)
-        val it1 = x._1.toIterator
-        val it2 = x._2.toIterator
-        while (it1.hasNext && it2.hasNext)
-          buf += ((it1.next, it2.next))
-        
-        buf.result
+        bf(x._1) ++= (x._1.toIterator zip x._2.toIterator) result
       }
 
     def zipped[El1, Repr1, El2, Repr2]

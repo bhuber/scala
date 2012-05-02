@@ -224,7 +224,7 @@ import Iterator.empty
  *  on, as well as the one passed as parameter. Using the old iterators is
  *  undefined and subject to change.
  */
-trait Iterator[+A] extends TraversableOnce[A] {
+trait Iterator[+A] extends TraversableOnce[A] with Container[A, Iterator] {
   self =>
 
   def seq: Iterator[A] = this

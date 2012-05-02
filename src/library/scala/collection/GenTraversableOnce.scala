@@ -8,6 +8,8 @@
 
 package scala.collection
 
+trait Container[+A, +CC[X] <: GenTraversableOnce[X]] extends Any with GenTraversableOnce[A] { }
+
 /** A template trait for all traversable-once objects which may be
  *  traversed in parallel.
  *

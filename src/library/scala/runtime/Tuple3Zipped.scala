@@ -115,23 +115,26 @@ class Tuple3Zipped[El1, Repr1, El2, Repr2, El3, Repr3](
 }
 
 object Tuple3Zipped {
+  import collection.{ Container, GenTraversableOnce }
+  import collection.generic.CanBuildFrom
+
+  private def zip3[T1, T2, T3](it1: Iterator[T1], it2: Iterator[T2], it3: Iterator[T3]): Iterator[(T1, T2, T3)] = {
+    new Iterator[(T1, T2, T3)] {
+      def hasNext = it1.hasNext && it2.hasNext && it3.hasNext
+      def next    = ((it1.next, it2.next, it3.next))
+    }
+  }
+
   class Ops[T1, T2, T3](x: (T1, T2, T3)) {
-    def invert[El1, CC1[X] <: TraversableOnce[X], El2, CC2[X] <: TraversableOnce[X], El3, CC3[X] <: TraversableOnce[X], That]
-      (implicit w1: T1 <:< CC1[El1],
-                w2: T2 <:< CC2[El2],
-                w3: T3 <:< CC3[El3],
-                bf: collection.generic.CanBuildFrom[CC1[_], (El1, El2, El3), That]
+    def invert[El1, CC1[X] <: GenTraversableOnce[X], El2, CC2[X] <: GenTraversableOnce[X], El3, CC3[X] <: GenTraversableOnce[X], That]
+      (implicit w1: T1 => Container[El1, CC1],
+                w2: T2 => Container[El2, CC2],
+                w3: T3 => Container[El3, CC3],
+                bf: CanBuildFrom[T1, (El1, El2, El3), That]
       ): That = {
-        val buf = bf(x._1)
-        val it1 = x._1.toIterator
-        val it2 = x._2.toIterator
-        val it3 = x._3.toIterator
-        while (it1.hasNext && it2.hasNext && it3.hasNext)
-          buf += ((it1.next, it2.next, it3.next))
-        
-        buf.result
+        bf(x._1) ++= zip3(x._1.toIterator, x._2.toIterator, x._3.toIterator) result
       }
-    
+
     def zipped[El1, Repr1, El2, Repr2, El3, Repr3]
       (implicit w1: T1 => TraversableLike[El1, Repr1],
                 w2: T2 => IterableLike[El2, Repr2],

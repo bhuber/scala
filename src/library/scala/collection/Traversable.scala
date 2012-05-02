@@ -22,6 +22,7 @@ import scala.util.control.Breaks
 trait Traversable[+A] extends TraversableLike[A, Traversable[A]]
                          with GenTraversable[A]
                          with TraversableOnce[A]
+                         with Container[A, Traversable]
                          with GenericTraversableTemplate[A, Traversable] {
   override def companion: GenericCompanion[Traversable] = Traversable
 

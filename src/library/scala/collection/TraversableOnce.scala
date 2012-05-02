@@ -57,7 +57,7 @@ import language.{implicitConversions, higherKinds}
  *
  *    Note: will not terminate for infinite-sized collections.
  */
-trait TraversableOnce[+A] extends Any with GenTraversableOnce[A] {
+trait TraversableOnce[+A] extends Any with Container[A, TraversableOnce] {
   self =>
 
   /** Self-documenting abstract methods. */
