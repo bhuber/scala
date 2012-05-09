@@ -583,14 +583,16 @@ abstract class ClassfileParser {
 
   /** Add type parameters of enclosing classes */
   def addEnclosingTParams(clazz: Symbol) {
-    var sym = clazz.owner
-    while (sym.isClass && !sym.isModuleClass) {
-//      println("adding tparams of " + sym)
-      for (t <- sym.tpe.typeArgs) {
-//        println("\tadding " + (t.typeSymbol.name + "->" + t.typeSymbol))
-        classTParams = classTParams + (t.typeSymbol.name -> t.typeSymbol)
+    if (clazz ne NoSymbol) {
+      var sym = clazz.owner
+      while (sym.isClass && !sym.isModuleClass) {
+  //      println("adding tparams of " + sym)
+        for (t <- sym.tpe.typeArgs) {
+  //        println("\tadding " + (t.typeSymbol.name + "->" + t.typeSymbol))
+          classTParams = classTParams + (t.typeSymbol.name -> t.typeSymbol)
+        }
+        sym = sym.owner
       }
-      sym = sym.owner
     }
   }
 

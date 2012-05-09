@@ -1352,14 +1352,19 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
             case LOAD_LOCAL(local)     => jcode.emitLOAD(indexOf(local), javaType(local.kind))
 
             case lf @ LOAD_FIELD(field, isStatic) =>
-              var owner = javaName(lf.hostClass)
-              debuglog("LOAD_FIELD with owner: " + owner +
-                    " flags: " + Flags.flagsToString(field.owner.flags))
-              val fieldJName = javaName(field)
-              val fieldJType = javaType(field)
-              if (isStatic) jcode.emitGETSTATIC(owner, fieldJName, fieldJType)
-              else          jcode.emitGETFIELD( owner, fieldJName, fieldJType)
-
+              // if (field.isPrivate && clasz.symbol != lf.hostClass) {
+              //   println("Catching private field: " + field.debugLocationString)
+              //   genCallMethod(CALL_METHOD(field.getter, isStatic))
+              // }
+              // else {
+                var owner = javaName(lf.hostClass)
+                debuglog("LOAD_FIELD with owner: " + owner +
+                      " flags: " + Flags.flagsToString(field.owner.flags))
+                val fieldJName = javaName(field)
+                val fieldJType = javaType(field)
+                if (isStatic) jcode.emitGETSTATIC(owner, fieldJName, fieldJType)
+                else          jcode.emitGETFIELD( owner, fieldJName, fieldJType)
+              // }
             case LOAD_MODULE(module) =>
               // assert(module.isModule, "Expected module: " + module)
               debuglog("generating LOAD_MODULE for: " + module + " flags: " + Flags.flagsToString(module.flags));

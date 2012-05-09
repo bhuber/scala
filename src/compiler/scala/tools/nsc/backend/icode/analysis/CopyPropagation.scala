@@ -559,8 +559,10 @@ abstract class CopyPropagation {
      *  @param m ...
      *  @return  ...
      */
-    final def isPureMethod(m: Symbol): Boolean =
-      m.isGetter // abstract getters are still pure, as we 'know'
+    final def isPureMethod(m: Symbol): Boolean = {
+      inliner.purityAnalysis isPureMethodDefinition m
+    }
+      // m.isGetter // abstract getters are still pure, as we 'know'
 
     final override def toString() = (
       method.blocks map { b =>

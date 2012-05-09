@@ -7,6 +7,7 @@
 package scala.tools.nsc
 package backend.opt
 
+import backend.PurityAnalysis
 import scala.collection.mutable
 import scala.tools.nsc.symtab._
 import scala.tools.nsc.util.NoSourceFile
@@ -38,32 +39,9 @@ abstract class Inliners extends SubComponent {
     res
   }
 
-  /** Look up implementation of method 'sym in 'clazz'.
-   */
-  def lookupImplFor(sym: Symbol, clazz: Symbol): Symbol = {
-    // TODO: verify that clazz.superClass is equivalent here to clazz.tpe.parents(0).typeSymbol (.tpe vs .info)
-    def needsLookup = (
-         (clazz != NoSymbol)
-      && (clazz != sym.owner)
-      && !sym.isEffectivelyFinal
-      && clazz.isEffectivelyFinal
-    )
-    def lookup(clazz: Symbol): Symbol = {
-      // println("\t\tlooking up " + meth + " in " + clazz.fullName + " meth.owner = " + meth.owner)
-      if (sym.owner == clazz || isBottomType(clazz)) sym
-      else sym.overridingSymbol(clazz) match {
-        case NoSymbol  => if (sym.owner.isTrait) sym else lookup(clazz.superClass)
-        case imp       => imp
-      }
-    }
-    if (needsLookup) {
-      val concreteMethod = lookup(clazz)
-      debuglog("\tlooked up method: " + concreteMethod.fullName)
-
-      concreteMethod
-    }
-    else sym
-  }
+  object purityAnalysis extends {
+    val global: Inliners.this.global.type = Inliners.this.global
+  } with PurityAnalysis { }
 
   /* A warning threshold */
   private final val MAX_INLINE_MILLIS = 2000
@@ -475,13 +453,13 @@ abstract class Inliners extends SubComponent {
     )
 
     /** Should method 'sym' being called in 'receiver' be loaded from disk? */
-    def shouldLoadImplFor(sym: Symbol, receiver: Symbol): Boolean = {
-      def alwaysLoad    = (receiver.enclosingPackage == RuntimePackage) || (receiver == PredefModule.moduleClass)
-      def loadCondition = sym.isEffectivelyFinal && isMonadicMethod(sym) && isHigherOrderMethod(sym)
-
-      val res = hasInline(sym) || alwaysLoad || loadCondition
-      debuglog("shouldLoadImplFor: " + receiver + "." + sym + ": " + res)
-      res
+    def shouldLoadImplFor(sym: Symbol, receiver: Symbol): Boolean = { true
+      // def alwaysLoad    = (receiver.enclosingPackage == RuntimePackage) || (receiver == PredefModule.moduleClass)
+      // def loadCondition = sym.isEffectivelyFinal && isMonadicMethod(sym) && isHigherOrderMethod(sym)
+      //
+      // val res = hasInline(sym) || alwaysLoad || loadCondition
+      // debuglog("shouldLoadImplFor: " + receiver + "." + sym + ": " + res)
+      // res
     }
 
     class IMethodInfo(val m: IMethod) {
@@ -494,6 +472,7 @@ abstract class Inliners extends SubComponent {
       def inline        = hasInline(sym)
       def noinline      = hasNoInline(sym)
 
+      def isPure        = purityAnalysis isPureIMethod m
       def isBridge      = sym.isBridge
       def isInClosure   = isClosureClass(owner)
       val isHigherOrder = isHigherOrderMethod(sym)
@@ -761,18 +740,11 @@ abstract class Inliners extends SubComponent {
       }
 
       private def helperIsSafeToInline(stackLength: Int): Boolean = {
-        def makePublic(f: Symbol): Boolean =
-          /*
-           * Completely disabling member publifying. This shouldn't have been done in the first place. :|
-           */
-          false
-          // (inc.m.sourceFile ne NoSourceFile) && (f.isSynthetic || f.isParamAccessor) && {
-          //   debuglog("Making not-private symbol out of synthetic: " + f)
-
-          //   f setNotFlag Flags.PRIVATE
-          //   true
-          // }
-
+        // if (inc.isPure) {
+        //   log("Inlining pure method invocation " + inc.m + " into " + caller)
+        //   return true
+        // }
+        //
         if (!inc.m.hasCode || inc.isRecursive)        { return false }
         if (inc.m.symbol.hasFlag(Flags.SYNCHRONIZED)) { return false }
 
@@ -790,7 +762,7 @@ abstract class Inliners extends SubComponent {
             else if (sym.isProtected) Protected
             else Public
 
-          def checkField(f: Symbol)   = check(f, f.isPrivate && !makePublic(f))
+          def checkField(f: Symbol)   = check(f, f.isPrivate)
           def checkSuper(m: Symbol)   = check(m, m.isPrivate || !m.isClassConstructor)
           def checkMethod(m: Symbol)  = check(m, m.isPrivate)
 
@@ -807,7 +779,8 @@ abstract class Inliners extends SubComponent {
             case Protected  => Protected
             case Public     => res
           })
-          iterate()
+          Public
+          // iterate()
         })
 
         canAccess(accessNeeded) && {
@@ -839,6 +812,7 @@ abstract class Inliners extends SubComponent {
         if (caller.isInClosure)           score -= 2
         else if (caller.inlinedCalls < 1) score -= 1 // only monadic methods can trigger the first inline
 
+        if (inc.isPure) score += 2
         if (inc.isSmall) score += 1;
         if (inc.isLarge) score -= 1;
         if (caller.isSmall && isLargeSum) {

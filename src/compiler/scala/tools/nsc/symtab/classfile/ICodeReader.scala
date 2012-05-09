@@ -650,7 +650,7 @@ abstract class ICodeReader extends ClassfileParser {
 
     def emit(i: Instruction) {
       instrs += ((pc, i))
-      if (i.isInstanceOf[DupX])
+      if (i.isInstanceOf[opcodes.DupX])
         containsDUPX = true
       if (i.isInstanceOf[opcodes.NEW])
         containsNEW = true
@@ -1019,14 +1019,5 @@ abstract class ICodeReader extends ClassfileParser {
 
       jmpTargets ++= targets.tail
     }
-
-    /** Duplicate and exchange pseudo-instruction. Should be later
-     *  replaced by proper ICode */
-    abstract class DupX extends Instruction
-
-    case object DUP_X1 extends DupX
-    case object DUP_X2 extends DupX
-    case object DUP2_X1 extends DupX
-    case object DUP2_X2 extends DupX
   }
 }

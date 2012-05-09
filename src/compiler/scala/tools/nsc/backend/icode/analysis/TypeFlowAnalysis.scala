@@ -332,6 +332,13 @@ abstract class TypeFlowAnalysis {
           stack.pop(stack.length)
           stack.push(toTypeKind(clasz.tpe))
 
+        case DUP_X1 | DUP_X2 =>
+          stack.push(stack.head)
+
+        case DUP2_X1 | DUP2_X2 =>
+          stack.push(stack.head)
+          stack.push(stack.head)
+
         case _ =>
           dumpClassesAndAbort("Unknown instruction: " + i)
       }
@@ -512,7 +519,7 @@ abstract class TypeFlowAnalysis {
             case REFERENCE(s) => s
             case _            => NoSymbol // e.g. the scrutinee is BOX(s) or ARRAY
           }
-          val concreteMethod = inliner.lookupImplFor(msym, receiver)
+          val concreteMethod = inliner.purityAnalysis.lookupImplFor(msym, receiver)
           val isCandidate = {
             ( inliner.isClosureClass(receiver) || concreteMethod.isEffectivelyFinal || receiver.isEffectivelyFinal ) &&
             !blackballed(concreteMethod)

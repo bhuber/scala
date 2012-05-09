@@ -99,6 +99,12 @@ trait Opcodes { self: ICodes =>
   }
 
   object opcodes {
+    abstract class DupX extends Instruction
+
+    case object DUP_X1 extends DupX
+    case object DUP_X2 extends DupX
+    case object DUP2_X1 extends DupX
+    case object DUP2_X2 extends DupX
 
     def mayThrow(i: Instruction): Boolean = i match {
       case LOAD_LOCAL(_) | STORE_LOCAL(_) | CONSTANT(_) | THIS(_) | CZJUMP(_, _, _, _)

@@ -154,10 +154,12 @@ trait Members {
   class IMethod(val symbol: Symbol) extends IMember {
     var code: Code = NoCode
 
+    def enclClass = symbol.enclClass
     def newBlock() = code.newBlock
     def startBlock = code.startBlock
     def lastBlock  = { assert(blocks.nonEmpty, symbol); blocks.last }
     def blocks = code.blocksList
+    def instructions = blocks flatMap (_.toList)
     def linearizedBlocks(lin: Linearizer = self.linearizer): List[BasicBlock] = lin linearize this
 
     def foreachBlock[U](f: BasicBlock  => U): Unit = blocks foreach f

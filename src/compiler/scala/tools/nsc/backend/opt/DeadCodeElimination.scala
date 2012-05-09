@@ -5,7 +5,8 @@
 
 
 package scala.tools.nsc
-package backend.opt
+package backend
+package opt
 
 import scala.collection.{ mutable, immutable }
 import symtab._
@@ -16,7 +17,7 @@ abstract class DeadCodeElimination extends SubComponent {
   import global._
   import icodes._
   import icodes.opcodes._
-  import definitions.RuntimePackage
+  import definitions._
 
   val phaseName = "dce"
 
@@ -38,6 +39,12 @@ abstract class DeadCodeElimination extends SubComponent {
 
   /** closures that are instantiated at least once, after dead code elimination */
   val liveClosures: mutable.Set[Symbol] = new mutable.HashSet()
+
+  object purityAnalysis extends {
+    val global: DeadCodeElimination.this.global.type = DeadCodeElimination.this.global
+  } with PurityAnalysis { }
+
+  private def isSideEffecting(sym: Symbol): Boolean = !purityAnalysis.isPureMethodCall(sym)
 
   /** Remove dead code.
    */
@@ -268,13 +275,80 @@ abstract class DeadCodeElimination extends SubComponent {
       }
       abort("could not find init in: " + method)
     }
-
-    private def isPure(sym: Symbol) = (
-         (sym.isGetter && sym.isEffectivelyFinal && !sym.isLazy)
-      || (sym.isPrimaryConstructor && (sym.enclosingPackage == RuntimePackage || inliner.isClosureClass(sym.owner)))
-    )
-    /** Is 'sym' a side-effecting method? TODO: proper analysis.  */
-    private def isSideEffecting(sym: Symbol) = !isPure(sym)
+    //
+    // private def isPureInstruction(instr: Instruction): Boolean = logResult("isPureInstruction(" + instr + ")") {
+    //   instr match {
+    //     case THIS(clasz)                          => true
+    //     case CONSTANT(const)                      => true
+    //     case LOAD_LOCAL(local)                    => true
+    //     case LOAD_FIELD(field, isStatic)          => true
+    //     case LOAD_MODULE(module)                  => true
+    //     case CALL_PRIMITIVE(primitive)            => true
+    //     case IS_INSTANCE(tpe)                     => true
+    //     case CHECK_CAST(tpe)                      => true
+    //     case JUMP(whereto)                        => true
+    //     case CJUMP(success, failure, cond, kind)  => true
+    //     case CZJUMP(success, failure, cond, kind) => true
+    //     case RETURN(kind)                         => true
+    //     case BOX(boxType)                         => true
+    //     case UNBOX(tpe)                           => true
+    //     case SCOPE_ENTER(lv)                      => true
+    //     case SCOPE_EXIT(lv)                       => true
+    //     case CALL_METHOD(method, style)           => isPureMethodCall(method)
+    //     case NEW(REFERENCE(cls))                  => isPureAllocation(cls)
+    //     case _ => false
+    //     // case STORE_THIS(kind)                     =>
+    //     // case LOAD_ARRAY_ITEM(kind)                =>
+    //     // case STORE_ARRAY_ITEM(kind)               =>
+    //     // case STORE_LOCAL(local)                   =>
+    //     // case STORE_FIELD(field, isStatic)         =>
+    //     // case CREATE_ARRAY(elem, dims)             =>
+    //     // case SWITCH(tags, labels)                 =>
+    //     // case THROW(clasz)                         =>
+    //     // case DROP(kind)                           =>
+    //     // case DUP(kind)                            =>
+    //     // case MONITOR_ENTER()                      =>
+    //     // case MONITOR_EXIT()                       =>
+    //     // case LOAD_EXCEPTION(clasz)                =>
+    //   }
+    // }
+    //
+    // private def loadIMethod(sym: Symbol): Option[IMethod] = {
+    //   val iclass  = icodes.icode(sym.enclClass, force = true)
+    //   iclass.methods filter (_.symbol == sym) match {
+    //     case imethod :: Nil => Some(imethod)
+    //     case _              => None
+    //   }
+    // }
+    //
+    // private def isPureAllocation(clazz: Symbol): Boolean = logResult("isPureAllocation(" + clazz.defString + ")")(
+    //      ((clazz eq ObjectClass) || (clazz eq AnyClass))
+    //   || (isPrimitiveValueClass(clazz))
+    //   || (clazz.isInterface)
+    //   || (
+    //           (clazz.isEffectivelyFinal)
+    //        && (clazz.info.decls filter (_.isClassConstructor) forall isPureMethodDefinition)
+    //        && (clazz.parentSymbols forall isPureAllocation)
+    //      )
+    // )
+    // private def isPureSelection(prefix: Symbol) = logResult("isPureSelection(" + prefix.defString + ")")(
+    //      prefix.isStatic
+    //   || prefix.isClass
+    //   || (prefix.isModule && isPureAllocation(prefix.moduleClass))
+    // )
+    //
+    // private def isPureMethodDefinition(sym: Symbol): Boolean = logResult("isPureMethodDefinition(" + sym.defString + " in " + sym.owner + ")")(
+    //      sym.isDeferred
+    //   || (loadIMethod(sym) exists (_.instructions forall isPureInstruction))
+    // )
+    //
+    // private def isPureMethodCall(sym: Symbol): Boolean = logResult("isPureMethodCall(" + sym.defString + " in " + sym.owner + ")")(
+    //   sym.isMethod && !sym.isLazy && (
+    //      ((sym.owner eq ObjectClass) || (sym.owner eq AnyClass) || isPrimitiveValueClass(sym.owner))
+    //   || (sym.isGetter && sym.isEffectivelyFinal)
+    //   || (sym.isPrimaryConstructor && (sym.enclosingPackage == RuntimePackage || inliner.isClosureClass(sym.owner)))
+    //   || (isPureSelection(sym.owner) && isPureMethodDefinition(sym))
+    // ))
 
   } /* DeadCode */
 }

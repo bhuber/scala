@@ -18,13 +18,21 @@ trait Repository {
   import global._
   import icodes._
 
-  val loaded: mutable.Map[Symbol, IClass] = perRunCaches.newMap()
+  val loaded: mutable.Map[Symbol, IClass] = mutable.Map[Symbol, IClass]()
+  // perRunCaches.newMap()
 
   /** Is the given class available as icode? */
   def available(sym: Symbol) = classes.contains(sym) || loaded.contains(sym)
 
   /** The icode of the given class, if available */
   def icode(sym: Symbol): Option[IClass] = (classes get sym) orElse (loaded get sym)
+
+  def loadIfPossible(sym: Symbol): Option[IClass] = {
+    icode(sym) orElse {
+      try   { load(sym) ; loaded get sym }
+      catch { case e => None }
+    }
+  }
 
   /** The icode of the given class. If not available, it loads
    *  its bytecode.
@@ -48,7 +56,7 @@ trait Repository {
       loaded += (c2.symbol -> c2)
     } catch {
       case e: Throwable => // possible exceptions are MissingRequirementError, IOException and TypeError -> no better common supertype
-        log("Failed to load %s. [%s]".format(sym.fullName, e.getMessage))
+        log("Failed to load %s %s".format(sym.fullName, e.getMessage))
         if (settings.debug.value)
           e.printStackTrace
     }
