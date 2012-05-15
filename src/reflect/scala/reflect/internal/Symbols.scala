@@ -2271,7 +2271,10 @@ trait Symbols extends api.Symbols { self: SymbolTable =>
         else briefParentsString(tp.parents)
       )
       if (isType) typeParamsString(tp) + (
-        if (isClass) " extends " + parents
+        if (isClass) (
+          if (parents.isEmpty) ""
+          else " extends " + parents
+        )
         else if (isAliasType) " = " + tp.resultType
         else tp.resultType match {
           case rt @ TypeBounds(_, _) => "" + rt

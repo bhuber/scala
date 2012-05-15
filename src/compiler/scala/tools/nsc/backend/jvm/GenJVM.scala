@@ -20,6 +20,17 @@ import java.util.jar.{ JarEntry, JarOutputStream }
 import scala.tools.nsc.io.AbstractFile
 import language.postfixOps
 
+trait JvmListener {
+  val global: Global
+  import global._
+
+  type ClassAndMethod = (Symbol, Symbol)
+
+  def registerClass(clazz: Symbol, signature: String): Unit
+  def registerMember(clazz: Symbol, member: Symbol, signature: String): Unit
+  def registerCall(from: ClassAndMethod, to: ClassAndMethod, signature: String): Unit
+}
+
 /** This class ...
  *
  *  @author  Iulian Dragos
@@ -33,6 +44,9 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
   import definitions._
 
   val phaseName = "jvm"
+
+  var jvmListeners: List[JvmListener] = List(new improving.Listener[global.type](global))
+  private implicit def fixSymbols[T <: Global](s: global.Symbol): T#Symbol = s.asInstanceOf[T#Symbol]
 
   /** Create a new phase */
   override def newPhase(p: Phase): Phase = new JvmPhase(p)
@@ -184,6 +198,9 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
     def this() = this(new ClassBytecodeWriter { })
     def debugLevel = settings.debuginfo.indexOfChoice
     import bytecodeWriter.writeClass
+
+    private def callFormatString = "%s %s"
+    // private def codeFormatString = "%-15s %20s %-50s %s#%s"
 
     val MIN_SWITCH_DENSITY = 0.7
     val INNER_CLASSES_FLAGS =
@@ -408,6 +425,9 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
     def genClass(c: IClass) {
       clasz = c
       innerClassBuffer.clear()
+      // println("\n%s %s #%s".format(
+      //   if (c.symbol.isInterface) "interface" else "class",
+      //   c.symbol.fullName, c.symbol.id))
 
       val name    = javaName(c.symbol)
 
@@ -427,6 +447,8 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
                                   javaName(superClass),
                                   ifaces,
                                   c.cunit.source.toString)
+
+      jvmListeners foreach (x => x.registerClass(c.symbol, jclass.getType.getSignature))
 
       if (isStaticModule(c.symbol) || serialVUID != None || isParcelableClass) {
         if (isStaticModule(c.symbol))
@@ -864,6 +886,9 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
     }
 
     def genField(f: IField) {
+      // println("var %s = %s: %s in %s".format(f.symbol.id, f.symbol.name, javaType(f.symbol), clasz.symbol.id))
+      //
+      // println(codeFormatString.format("var", f.symbol.name, javaType(f.symbol), "", clasz.symbol.id))
       debuglog("Adding field: " + f.symbol.fullName)
       
       val jfield = jclass.addNewField(
@@ -872,14 +897,18 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
         javaType(f.symbol.tpe)
       )
 
+      jvmListeners foreach (x => x.registerMember(clasz.symbol, f.symbol, jfield.getType.getSignature))
       addGenericSignature(jfield, f.symbol, clasz.symbol)
       addAnnotations(jfield, f.symbol.annotations)
     }
 
     def genMethod(m: IMethod) {
+      // println("def %s: %s (%s in %s)".format(m.symbol.name, javaType(m.symbol), m.symbol.id, clasz.symbol.id))
+      // println(codeFormatString.format("def", m.symbol.name, javaType(m.symbol), "", clasz.symbol.id))
       if (m.symbol.isStaticConstructor || definitions.isGetClass(m.symbol)) return
 
       debuglog("Generating method " + m.symbol.fullName)
+
       method = m
       endPC.clear
       computeLocalVarsIndex(m)
@@ -906,6 +935,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
                                     mkArray(m.params map (p => javaName(p.sym))))
 
       addRemoteException(jmethod, m.symbol)
+      jvmListeners foreach (x => x.registerMember(clasz.symbol, m.symbol, jmethod.getType.getSignature))
 
       if (!jmethod.isAbstract() && !method.native) {
         val jcode = jmethod.getCode().asInstanceOf[JExtendedCode]
@@ -1287,8 +1317,13 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
         val jname    = javaName(method)
         val jtype    = javaType(method).asInstanceOf[JMethodType]
 
+        jvmListeners foreach (x => x.registerCall((siteSymbol, BytecodeGenerator.this.method.symbol), (receiver, method), jtype.getSignature))
+
         def dbg(invoke: String) {
-          debuglog("%s %s %s.%s:%s".format(invoke, receiver.accessString, jowner, jname, jtype))
+          // debuglog
+          // println("call %s".format(method.id))
+          // println(codeFormatString.format(
+          //   invoke, jname, jtype, "#" + clasz.symbol.id + " -> ", receiver.id))
         }
 
         def initModule() {
@@ -1307,7 +1342,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
         style match {
           case Static(true)                         => dbg("invokespecial");    jcode.emitINVOKESPECIAL(jowner, jname, jtype)
           case Static(false)                        => dbg("invokestatic");      jcode.emitINVOKESTATIC(jowner, jname, jtype)
-          case Dynamic if isInterfaceCall(receiver) => dbg("invokinterface"); jcode.emitINVOKEINTERFACE(jowner, jname, jtype)
+          case Dynamic if isInterfaceCall(receiver) => dbg("invokeinterface"); jcode.emitINVOKEINTERFACE(jowner, jname, jtype)
           case Dynamic                              => dbg("invokevirtual");    jcode.emitINVOKEVIRTUAL(jowner, jname, jtype)
           case SuperCall(_)                         =>
             dbg("invokespecial")

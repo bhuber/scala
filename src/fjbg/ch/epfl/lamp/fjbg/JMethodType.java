@@ -51,8 +51,11 @@ public class JMethodType extends JType {
     public String toString() {
         StringBuffer buf = new StringBuffer();
         buf.append('(');
-        for (int i = 0; i < argTypes.length; ++i)
-            buf.append(argTypes[i].toString());
+        for (int i = 0; i < argTypes.length; ++i) {
+          buf.append(argTypes[i].toString());
+          if(argTypes.length - i > 1)
+            buf.append(';');
+        }
         buf.append(')');
         buf.append(returnType.toString());
         return buf.toString();
