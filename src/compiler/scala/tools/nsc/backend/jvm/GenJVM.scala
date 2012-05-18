@@ -28,7 +28,7 @@ trait JvmListener {
 
   def registerClass(clazz: Symbol, signature: String): Unit
   def registerMember(clazz: Symbol, member: Symbol, signature: String): Unit
-  def registerCall(from: ClassAndMethod, to: ClassAndMethod, signature: String): Unit
+  def registerCall(clazz: Symbol, receiver: Symbol, method: Symbol, signature: String): Unit
 }
 
 /** This class ...
@@ -1317,7 +1317,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
         val jname    = javaName(method)
         val jtype    = javaType(method).asInstanceOf[JMethodType]
 
-        jvmListeners foreach (x => x.registerCall((siteSymbol, BytecodeGenerator.this.method.symbol), (receiver, method), jtype.getSignature))
+        jvmListeners foreach (x => x.registerCall(siteSymbol, receiver, method, jtype.getSignature))
 
         def dbg(invoke: String) {
           // debuglog
