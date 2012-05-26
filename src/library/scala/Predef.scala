@@ -236,7 +236,7 @@ object Predef extends LowPriorityImplicits {
       throw new IllegalArgumentException("requirement failed: "+ message)
   }
 
-  final class Ensuring[A](val __resultOfEnsuring: A) extends AnyVal {
+  implicit final class Ensuring[A](val __resultOfEnsuring: A) extends AnyVal {
     // `__resultOfEnsuring` must be a public val to allow inlining.
     // See comments in ArrowAssoc for more.
     @deprecated("Use __resultOfEnsuring instead", "2.10.0")
@@ -247,7 +247,16 @@ object Predef extends LowPriorityImplicits {
     def ensuring(cond: A => Boolean): A = { assert(cond(__resultOfEnsuring)); __resultOfEnsuring }
     def ensuring(cond: A => Boolean, msg: => Any): A = { assert(cond(__resultOfEnsuring), msg); __resultOfEnsuring }
   }
-  @inline implicit def any2Ensuring[A](x: A): Ensuring[A] = new Ensuring(x)
+
+  /** This implicit creates a conversion from any value for which an
+    * implicit `Ordering` exists to the class which creates infix operations.
+    * With it imported, you can write methods as follows:
+    *
+    * {{{
+    * def lessThan[T: Ordering](x: T, y: T) = x < y
+    * }}}
+    */
+  implicit def infixOrderingOps[T](x: T)(implicit ord: Ordering[T]): ord.Ops = new ord.Ops(x)
 
   /** `???` can be used for marking methods that remain to be implemented.
    *  @throws  A `NotImplementedError`
@@ -268,7 +277,7 @@ object Predef extends LowPriorityImplicits {
     def unapply[A, B, C](x: Tuple3[A, B, C]): Option[Tuple3[A, B, C]] = Some(x)
   }
 
-  final class ArrowAssoc[A](val __leftOfArrow: A) extends AnyVal {
+  implicit final class ArrowAssoc[A](val __leftOfArrow: A) extends AnyVal {
     // `__leftOfArrow` must be a public val to allow inlining. The val
     // used to be called `x`, but now goes by `__leftOfArrow`, as that
     // reduces the chances of a user's writing `foo.__leftOfArrow` and
@@ -281,7 +290,6 @@ object Predef extends LowPriorityImplicits {
     @inline def -> [B](y: B): Tuple2[A, B] = Tuple2(__leftOfArrow, y)
     def →[B](y: B): Tuple2[A, B] = ->(y)
   }
-  @inline implicit def any2ArrowAssoc[A](x: A): ArrowAssoc[A] = new ArrowAssoc(x)
 
   // printing and reading -----------------------------------------------
 
@@ -402,7 +410,6 @@ object Predef extends LowPriorityImplicits {
 
   @inline implicit def any2stringfmt(x: Any) = new runtime.StringFormat(x)
   @inline implicit def augmentString(x: String): StringOps = new StringOps(x)
-  implicit def any2stringadd(x: Any) = new runtime.StringAdd(x)
   implicit def unaugmentString(x: StringOps): String = x.repr
 
   @deprecated("Use StringCanBuildFrom", "2.10.0")

@@ -79,7 +79,6 @@ object Sorting {
 
   private def sort1[K: Ordering](x: Array[K], off: Int, len: Int) {
     val ord = Ordering[K]
-    import ord._
 
     def swap(a: Int, b: Int) {
       val t = x(a)

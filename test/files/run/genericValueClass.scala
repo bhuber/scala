@@ -5,7 +5,7 @@ final class ArrowAssoc[A](val __leftOfArrow: A) extends AnyVal {
 
 object Test extends App {
   {
-  @inline implicit def any2ArrowAssoc[A](x: A): ArrowAssoc[A] = new ArrowAssoc(x)
+  @inline implicit def ArrowAssoc[A](x: A): ArrowAssoc[A] = new ArrowAssoc(x)
   val x = 1 -> "abc"
   println(x)
   }

@@ -270,7 +270,7 @@ class Power[ReplValsImpl <: ReplVals : TypeTag](val intp: IMain, replVals: ReplV
       def show(x: T): Unit = AnyPrettifier show x
     }
   }
-  trait Prettifier[T] {
+  trait Prettifier[-T] {
     def show(x: T): Unit
     def prettify(x: T): TraversableOnce[String]
 

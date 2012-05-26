@@ -9,8 +9,8 @@ object Test {
     assert(!(MinusZero equals PlusZero))
   
     List(
-      -5f.max(2) ,
-      -5f max 2 ,
+      -5f.max(2f) ,
+      -5f max 2f ,
       -5.max(2) ,
       -5 max 2
     ) foreach (num => assert(num == 2))

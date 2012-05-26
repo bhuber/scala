@@ -11,8 +11,8 @@ B.scala:3: error: type mismatch;
  found   : C
  required: ?{def x: ?}
 Note that implicit conversions are not applicable because they are ambiguous:
- both method any2Ensuring in object Predef of type [A](x: A)Ensuring[A]
- and method any2ArrowAssoc in object Predef of type [A](x: A)ArrowAssoc[A]
+ both method Ensuring in object Predef of type [A](__resultOfEnsuring: A)Ensuring[A]
+ and method ArrowAssoc in object Predef of type [A](__leftOfArrow: A)ArrowAssoc[A]
  are possible conversion functions from C to ?{def x: ?}
     println( (new C).x )
               ^

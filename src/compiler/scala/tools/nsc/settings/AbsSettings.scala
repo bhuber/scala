@@ -47,8 +47,6 @@ trait AbsSettings extends scala.reflect.internal.settings.AbsSettings {
         }
     })
 
-  implicit lazy val SettingOrdering: Ordering[Setting] = Ordering.ordered
-
   trait AbsSetting extends Ordered[Setting] with AbsSettingValue {
     def name: String
     def helpDescription: String

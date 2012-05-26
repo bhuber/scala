@@ -23,6 +23,9 @@ import language.implicitConversions
  *  @since 2.8
  */
 class LowPriorityImplicits {
+  /** Prefer the '+' defined in Ordering#Ops to this one. */
+  implicit def any2stringadd(x: Any) = new runtime.StringAdd(x)
+
   /** We prefer the java.lang.* boxed types to these wrappers in
    *  any potential conflicts.  Conflicts do exist because the wrappers
    *  need to implement ScalaNumber in order to have a symmetric equals

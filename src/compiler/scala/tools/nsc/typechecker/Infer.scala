@@ -815,17 +815,13 @@ trait Infer {
         }
     }
 
-    private def isAsSpecificValueType(tpe1: Type, tpe2: Type, undef1: List[Symbol], undef2: List[Symbol]): Boolean = {
-      def considerContravariance = tpe1.dealias.typeConstructor.typeParams exists (_.isContravariant)
-
+    private def isAsSpecificValueType(tpe1: Type, tpe2: Type, undef1: List[Symbol], undef2: List[Symbol]): Boolean = /*logResult("isAsSpecificValueType" + ((tpe1, tpe2, undef1, undef2))) */ {
       (tpe1, tpe2) match {
         case (PolyType(tparams1, rtpe1), _) =>
           isAsSpecificValueType(rtpe1, tpe2, undef1 ::: tparams1, undef2)
         case (_, PolyType(tparams2, rtpe2)) =>
           isAsSpecificValueType(tpe1, rtpe2, undef1, undef2 ::: tparams2)
-        case (_: TypeRef, _: TypeRef) if considerContravariance =>
-          val ntpe1 @ TypeRef(pre1, sym1, args1) = tpe1.dealias
-          val ntpe2 @ TypeRef(pre2, sym2, args2) = tpe2.dealias
+        case (_: TypeRef, _: TypeRef) if tpe1.dealias.typeConstructor.typeParams.exists(_.isContravariant) =>
           // This is the spot where we rescue contravariance from uselessness.
           // A simple subtype check will consider Ordering[Any] to be more
           // specific than Ordering[MyVerySpecificType]. Since this defeats the
@@ -834,12 +830,22 @@ trait Infer {
           // for contravariant type parameters. This of course assumes that both
           // candidate types are already known to be sound inferences; the only
           // question is which to infer.
-          (sym1.typeConstructor <:< sym2.typeConstructor) && {
-            ntpe1.baseClasses intersect ntpe2.baseClasses forall { bc =>
-              val t1 = ntpe1 baseType bc
-              val t2 = ntpe2 baseType bc
-              (t1.typeArgs corresponds t2.typeArgs)(_ <:< _)
-            }
+          val ntpe1 @ TypeRef(pre1, sym1, args1) = tpe1.dealias
+          val ntpe2 @ TypeRef(pre2, sym2, args2) = tpe2.dealias
+          // println("isAsSpecificValueType(\n  " +
+          //   List(tpe1, tpe2, ntpe1, ntpe2).mkString("\n  ") +
+          //   "\n)"
+          // )
+
+          // printResult("result")(
+          (ntpe1.typeConstructor <:< ntpe2.typeConstructor) && {
+            val t1 = ntpe1 baseType sym2
+            val t2 = ntpe2
+
+            // println("args " + ((t1.typeArgs, t2.typeArgs, "ps=" + sym2.typeParams)))
+            (t1.typeArgs corresponds t2.typeArgs)((x, y) =>
+              (x <:< y) || (y.typeSymbol.isTypeParameter && !x.typeSymbol.isTypeParameter)
+            )
           }
         case _ =>
           existentialAbstraction(undef1, tpe1) <:< existentialAbstraction(undef2, tpe2)

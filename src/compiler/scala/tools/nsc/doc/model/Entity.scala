@@ -170,11 +170,6 @@ trait MemberEntity extends Entity {
   /** If this member originates from an implicit conversion, we set the implicit information to the correct origin */
   def byConversion: Option[ImplicitConversion]
 }
-object MemberEntity {
-  // Oh contravariance, contravariance, wherefore art thou contravariance?
-  // Note: the above works for both the commonly misunderstood meaning of the line and the real one.
-  implicit lazy val MemberEntityOrdering: Ordering[MemberEntity] = Entity.EntityOrdering on (x => x)
-}
 
 /** An entity that is parameterized by types */
 trait HigherKinded extends Entity {

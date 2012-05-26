@@ -1,5 +1,3 @@
-import Ordering.Implicits._
-
 class A {
   import Predef.{ implicitly => ? }
   

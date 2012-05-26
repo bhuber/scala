@@ -41,8 +41,6 @@ class PriorityQueue[A](implicit val ord: Ordering[A])
       with Builder[A, PriorityQueue[A]]
       with Serializable
 {
-  import ord._
-
   private final class ResizableArrayAccess[A] extends AbstractSeq[A] with ResizableArray[A] {
     @inline def p_size0 = size0
     @inline def p_size0_=(s: Int) = size0 = s

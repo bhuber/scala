@@ -1799,11 +1799,9 @@ trait Types extends api.Types { self: SymbolTable =>
      */
     private def computeRefs() {
       refs = Array(Map(), Map())
-      typeSymbol.typeParams foreach { tparam =>
-        parents foreach { p =>
-          enterRefs.enter(tparam, p)
-        }
-      }
+      for (tparam <- typeSymbol.typeParams ; p <- parents)
+        enterRefs.enter(tparam, p)
+
       state = Initializing
     }
 
