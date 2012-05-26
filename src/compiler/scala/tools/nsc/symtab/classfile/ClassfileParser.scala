@@ -13,7 +13,6 @@ import scala.collection.{ mutable, immutable }
 import scala.collection.mutable.{ ListBuffer, ArrayBuffer }
 import scala.annotation.switch
 import scala.reflect.internal.pickling.{PickleBuffer, ByteCodecs}
-import scala.reflect.internal.{ JvmClassInfo, JvmMemberInfo }
 import scala.tools.nsc.io.AbstractFile
 
 /** This abstract class implements a class file parser.
@@ -46,8 +45,6 @@ abstract class ClassfileParser {
   def srcfile = srcfile0
 
   private def currentIsTopLevel = currentClass.toString.indexOf('$') < 0
-
-  private var jvmInfo: JvmClassInfo = _
 
   private object unpickler extends scala.reflect.internal.pickling.UnPickler {
     val global: ClassfileParser.this.global.type = ClassfileParser.this.global
@@ -98,7 +95,6 @@ abstract class ClassfileParser {
       this.in           = new AbstractFileReader(file)
       this.clazz        = if (root.isModule) root.companionClass else root
       this.staticModule = clazz.companionModule
-      this.jvmInfo      = JvmClassInfo.fromBytes(file.toByteArray)
       this.isScala      = false
 
       parseHeader
@@ -619,12 +615,11 @@ abstract class ClassfileParser {
 
       // sealed java enums (experimental)
       if (isEnum && opt.experimental) {
-        // need to give singleton type
-        sym setInfo info.narrow
-        if (!sym.superClass.isSealed)
-          sym.superClass setFlag SEALED
+        val enumClass = sym.owner.linkedClassOfClass
+        if (!enumClass.isSealed)
+          enumClass setFlag (SEALED | ABSTRACT)
 
-        sym.superClass addChild sym
+        enumClass addChild sym
       }
     }
   }
@@ -1244,9 +1239,6 @@ abstract class ClassfileParser {
     val ifaces = in.nextChar
     in.skip(2 * ifaces)
   }
-
-  protected def getOwner(info: JvmMemberInfo): Symbol =
-    if (info.isStatic) moduleClass else clazz
 
   protected def getOwner(flags: Int): Symbol =
     if (isStatic(flags)) moduleClass else clazz

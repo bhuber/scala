@@ -77,8 +77,16 @@ abstract class UnCurry extends InfoTransform
     private var inConstructorFlag = 0L
     private val byNameArgs        = mutable.HashSet[Tree]()
     private val noApply           = mutable.HashSet[Tree]()
-    private val newMembers        = mutable.ArrayBuffer[Tree]()
+    private val newMembers        = mutable.Map[Symbol, mutable.Buffer[Tree]]()
     private val repeatedParams    = mutable.Map[Symbol, List[ValDef]]()
+
+    /** Add a new synthetic member for `currentOwner` */
+    private def addNewMember(t: Tree): Unit =
+      newMembers.getOrElseUpdate(currentOwner, mutable.Buffer()) += t
+
+    /** Process synthetic members for `owner`. They are removed form the `newMembers` as a side-effect. */
+    @inline private def useNewMembers[T](owner: Symbol)(f: List[Tree] => T): T =
+      f(newMembers.remove(owner).getOrElse(Nil).toList)
 
     @inline private def withInPattern[T](value: Boolean)(body: => T): T = {
       inPattern = value
@@ -410,23 +418,23 @@ abstract class UnCurry extends InfoTransform
         def sequenceToArray(tree: Tree) = {
           val toArraySym = tree.tpe member nme.toArray
           assert(toArraySym != NoSymbol)
-          def getClassTag(tp: Type): Tree = {
-            val tag = localTyper.resolveArrayTag(tree.pos, tp)
+          def getArrayTag(tp: Type): Tree = {
+            val tag = localTyper.resolveArrayTag(tp, tree.pos)
             // Don't want bottom types getting any further than this (SI-4024)
-            if (tp.typeSymbol.isBottomClass) getClassTag(AnyClass.tpe)
+            if (tp.typeSymbol.isBottomClass) getArrayTag(AnyClass.tpe)
             else if (!tag.isEmpty) tag
-            else if (tp.bounds.hi ne tp) getClassTag(tp.bounds.hi)
-            else localTyper.TyperErrorGen.MissingClassTagError(tree, tp)
+            else if (tp.bounds.hi ne tp) getArrayTag(tp.bounds.hi)
+            else localTyper.TyperErrorGen.MissingArrayTagError(tree, tp)
           }
-          def traversableClassTag(tpe: Type): Tree = {
+          def traversableArrayTag(tpe: Type): Tree = {
             (tpe baseType TraversableClass).typeArgs match {
-              case targ :: _  => getClassTag(targ)
+              case targ :: _  => getArrayTag(targ)
               case _          => EmptyTree
             }
           }
           afterUncurry {
             localTyper.typedPos(pos) {
-              gen.mkMethodCall(tree, toArraySym, Nil, List(traversableClassTag(tree.tpe)))
+              gen.mkMethodCall(tree, toArraySym, Nil, List(traversableArrayTag(tree.tpe)))
             }
           }
         }
@@ -473,7 +481,15 @@ abstract class UnCurry extends InfoTransform
             arg.pos.source.path + ":" + arg.pos.line, fun.fullName,
             if (fun.isPrivate) "private" else "")
           )
-          newFunction0(arg)
+
+          arg match {
+            // don't add a thunk for by-name argument if argument already is an application of
+            // a Function0. We can then remove the application and use the existing Function0.
+            case Apply(Select(recv, nme.apply), Nil) if recv.tpe.typeSymbol isSubClass FunctionClass(0) =>
+              recv
+            case _ =>
+              newFunction0(arg)
+          }
         }
       }
     }
@@ -560,7 +576,12 @@ abstract class UnCurry extends InfoTransform
         if ((sym ne null) && (sym.elisionLevel.exists (_ < settings.elidebelow.value || settings.noassertions.value)))
           replaceElidableTree(tree)
         else translateSynchronized(tree) match {
-          case dd @ DefDef(mods, name, tparams, vparamss, tpt, rhs) =>
+          case dd @ DefDef(mods, name, tparams, _, tpt, rhs) =>
+            // Remove default argument trees from parameter ValDefs, SI-4812
+            val vparamssNoRhs = dd.vparamss mapConserve (_ mapConserve {p =>
+              treeCopy.ValDef(p, p.mods, p.name, p.tpt, EmptyTree)
+            })
+
             if (dd.symbol hasAnnotation VarargsClass) saveRepeatedParams(dd)
 
             withNeedLift(false) {
@@ -578,10 +599,10 @@ abstract class UnCurry extends InfoTransform
                   }
                   treeCopy.DefDef(
                     dd, mods, name, transformTypeDefs(tparams),
-                    transformValDefss(vparamss), transform(tpt), rhs1)
+                    transformValDefss(vparamssNoRhs), transform(tpt), rhs1)
                 }
               } else {
-                super.transform(dd)
+                super.transform(treeCopy.DefDef(dd, mods, name, tparams, vparamssNoRhs, tpt, rhs))
               }
             }
           case ValDef(_, _, _, rhs) =>
@@ -667,9 +688,8 @@ abstract class UnCurry extends InfoTransform
 
       tree match {
         /* Some uncurry post transformations add members to templates.
-         * When inside a template, the following sequence is available:
-         * - newMembers
-         * Any entry in this sequence will be added into the template
+         * 
+         * Members registered by `addMembers` for the current template are added
          * once the template transformation has finished.
          *
          * In particular, this case will add:
@@ -677,8 +697,10 @@ abstract class UnCurry extends InfoTransform
          */
         case Template(_, _, _) =>
           localTyper = typer.atOwner(tree, currentClass)
-          try deriveTemplate(tree)(transformTrees(newMembers.toList) ::: _)
-          finally newMembers.clear()
+          useNewMembers(currentClass) {
+            newMembers =>
+              deriveTemplate(tree)(transformTrees(newMembers) ::: _)
+          }
 
         case dd @ DefDef(_, _, _, vparamss0, _, rhs0) =>
           val flatdd = copyDefDef(dd)(
@@ -750,7 +772,7 @@ abstract class UnCurry extends InfoTransform
 
     /* Called during post transform, after the method argument lists have been flattened.
      * It looks for the method in the `repeatedParams` map, and generates a Java-style
-     * varargs forwarder. It then adds the forwarder to the `newMembers` sequence.
+     * varargs forwarder.
      */
     private def addJavaVarargsForwarders(dd: DefDef, flatdd: DefDef): DefDef = {
       if (!dd.symbol.hasAnnotation(VarargsClass) || !repeatedParams.contains(dd.symbol))
@@ -827,8 +849,7 @@ abstract class UnCurry extends InfoTransform
         case None =>
           // enter symbol into scope
           currentClass.info.decls enter forwsym
-          // add the method to `newMembers`
-          newMembers += forwtree
+          addNewMember(forwtree)
       }
 
       flatdd

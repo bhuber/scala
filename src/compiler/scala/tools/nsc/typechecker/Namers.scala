@@ -473,12 +473,8 @@ trait Namers extends MethodSynthesis {
 
         if (from != nme.WILDCARD && base != ErrorType) {
           if (isValid(from)) {
-            if (currentRun.compileSourceFor(expr, from)) {
-              // side effecting, apparently
-              typeSig(tree)
-            }
             // for Java code importing Scala objects
-            else if (!nme.isModuleName(from) || isValid(nme.stripModuleSuffix(from))) {
+            if (!nme.isModuleName(from) || isValid(nme.stripModuleSuffix(from))) {
               typer.TyperErrorGen.NotAMemberError(tree, expr, from)
               typer.infer.setError(tree)
             }
@@ -567,7 +563,15 @@ trait Namers extends MethodSynthesis {
         assignAndEnterFinishedSymbol(tree)
       else
         enterGetterSetter(tree)
+
+      // When java enums are read from bytecode, they are known to have
+      // constant types by the jvm flag and assigned accordingly.  When
+      // they are read from source, the java parser marks them with the
+      // STABLE flag, and now we receive that signal.
+      if (tree.symbol hasAllFlags STABLE | JAVA)
+        tree.symbol setInfo ConstantType(Constant(tree.symbol))
     }
+
     def enterLazyVal(tree: ValDef, lazyAccessor: Symbol): TermSymbol = {
       // If the owner is not a class, this is a lazy val from a method,
       // with no associated field.  It has an accessor with $lzy appended to its name and
@@ -628,7 +632,7 @@ trait Namers extends MethodSynthesis {
         classAndNamerOfModule(m) = (tree, null)
       }
       val owner = tree.symbol.owner
-      if (settings.lint.value && owner.isPackageObjectClass) {
+      if (settings.lint.value && owner.isPackageObjectClass && !mods.isImplicit) {
         context.unit.warning(tree.pos,
           "it is not recommended to define classes/objects inside of package objects.\n" +
           "If possible, define " + tree.symbol + " in " + owner.skipPackageObject + " instead."
@@ -765,7 +769,10 @@ trait Namers extends MethodSynthesis {
       val tpe1 = dropRepeatedParamType(tpe.deconst)
       val tpe2 = tpe1.widen
 
-      if (sym.isVariable || sym.isMethod && !sym.hasAccessorFlag)
+      // This infers Foo.type instead of "object Foo"
+      // See Infer#adjustTypeArgs for the polymorphic case.
+      if (tpe.typeSymbolDirect.isModuleClass) tpe1
+      else if (sym.isVariable || sym.isMethod && !sym.hasAccessorFlag)
         if (tpe2 <:< pt) tpe2 else tpe1
       else if (isHidden(tpe)) tpe2
       // In an attempt to make pattern matches involving method local vals
@@ -784,8 +791,8 @@ trait Namers extends MethodSynthesis {
       val typedBody =
         if (tree.symbol.isTermMacro) defnTyper.computeMacroDefType(tree, pt)
         else defnTyper.computeType(tree.rhs, pt)
-      val sym       = if (owner.isMethod) owner else tree.symbol
-      val typedDefn = widenIfNecessary(sym, typedBody, pt)
+
+      val typedDefn = widenIfNecessary(tree.symbol, typedBody, pt)
       assignTypeToTree(tree, typedDefn)
     }
 
@@ -1295,14 +1302,18 @@ trait Namers extends MethodSynthesis {
           if (expr1.symbol != null && expr1.symbol.isRootPackage)
             RootImportError(tree)
 
-          val newImport = treeCopy.Import(tree, expr1, selectors).asInstanceOf[Import]
-          checkSelectors(newImport)
-          transformed(tree) = newImport
-          // copy symbol and type attributes back into old expression
-          // so that the structure builder will find it.
-          expr.symbol = expr1.symbol
-          expr.tpe = expr1.tpe
-          ImportType(expr1)
+          if (expr1.isErrorTyped)
+            ErrorType
+          else {
+            val newImport = treeCopy.Import(tree, expr1, selectors).asInstanceOf[Import]
+            checkSelectors(newImport)
+            transformed(tree) = newImport
+            // copy symbol and type attributes back into old expression
+            // so that the structure builder will find it.
+            expr.symbol = expr1.symbol
+            expr.tpe = expr1.tpe
+            ImportType(expr1)
+          }
       }
 
       val result =
@@ -1412,6 +1423,8 @@ trait Namers extends MethodSynthesis {
         fail(LazyAndEarlyInit)
       if (sym.info.typeSymbol == FunctionClass(0) && sym.isValueParameter && sym.owner.isCaseClass)
         fail(ByNameParameter)
+      if (sym.isTrait && sym.isFinal && !sym.isSubClass(AnyValClass))
+        checkNoConflict(ABSTRACT, FINAL)
 
       if (sym.isDeferred) {
         // Is this symbol type always allowed the deferred flag?

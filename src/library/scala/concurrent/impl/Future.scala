@@ -17,8 +17,6 @@ import scala.collection.mutable.Stack
 
 private[concurrent] trait Future[+T] extends scala.concurrent.Future[T] with Awaitable[T] {
 
-  implicit def executor: ExecutionContext
-
 }
 
 private[concurrent] object Future {
@@ -57,13 +55,15 @@ private[concurrent] object Future {
           case NonFatal(e) =>
             // Commenting out reporting for now, since it produces too much output in the tests
             //executor.reportFailure(e)
-            scala.concurrent.resolver(e)
+            Left(e)
         }
       }
     })
     
     promise.future
   }
+
+  private[impl] val throwableId: Throwable => Throwable = identity _
 
   // an optimization for batching futures
   // TODO we should replace this with a public queue,
