@@ -1,0 +1,8 @@
+
+If there are several eligible arguments which match the
+implicit parameter’s type, a most specific one will be
+chosen using the rules of static overloading resolution.
+  -- SLS 7.2, "Implicit Parameters"
+
+Static overloading selection: 1  2  3
+    Implicit value selection: 1  2  3

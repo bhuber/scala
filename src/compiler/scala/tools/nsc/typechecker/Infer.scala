@@ -814,15 +814,37 @@ trait Infer {
             isAsSpecificValueType(ftpe1, ftpe2, List(), List())
         }
     }
-    private def isAsSpecificValueType(tpe1: Type, tpe2: Type, undef1: List[Symbol], undef2: List[Symbol]): Boolean = (tpe1, tpe2) match {
-      case (PolyType(tparams1, rtpe1), _) =>
-        isAsSpecificValueType(rtpe1, tpe2, undef1 ::: tparams1, undef2)
-      case (_, PolyType(tparams2, rtpe2)) =>
-        isAsSpecificValueType(tpe1, rtpe2, undef1, undef2 ::: tparams2)
-      case _ =>
-        existentialAbstraction(undef1, tpe1) <:< existentialAbstraction(undef2, tpe2)
-    }
 
+    private def isAsSpecificValueType(tpe1: Type, tpe2: Type, undef1: List[Symbol], undef2: List[Symbol]): Boolean = {
+      def considerContravariance = tpe1.dealias.typeConstructor.typeParams exists (_.isContravariant)
+
+      (tpe1, tpe2) match {
+        case (PolyType(tparams1, rtpe1), _) =>
+          isAsSpecificValueType(rtpe1, tpe2, undef1 ::: tparams1, undef2)
+        case (_, PolyType(tparams2, rtpe2)) =>
+          isAsSpecificValueType(tpe1, rtpe2, undef1, undef2 ::: tparams2)
+        case (_: TypeRef, _: TypeRef) if considerContravariance =>
+          val ntpe1 @ TypeRef(pre1, sym1, args1) = tpe1.dealias
+          val ntpe2 @ TypeRef(pre2, sym2, args2) = tpe2.dealias
+          // This is the spot where we rescue contravariance from uselessness.
+          // A simple subtype check will consider Ordering[Any] to be more
+          // specific than Ordering[MyVerySpecificType]. Since this defeats the
+          // purpose of being able to specialize behavior via subclassing, we
+          // should instead judge specificity based on the deepest subtype, even
+          // for contravariant type parameters. This of course assumes that both
+          // candidate types are already known to be sound inferences; the only
+          // question is which to infer.
+          (sym1.typeConstructor <:< sym2.typeConstructor) && {
+            ntpe1.baseClasses intersect ntpe2.baseClasses forall { bc =>
+              val t1 = ntpe1 baseType bc
+              val t2 = ntpe2 baseType bc
+              (t1.typeArgs corresponds t2.typeArgs)(_ <:< _)
+            }
+          }
+        case _ =>
+          existentialAbstraction(undef1, tpe1) <:< existentialAbstraction(undef2, tpe2)
+      }
+    }
 
 /*
     def isStrictlyMoreSpecific(ftpe1: Type, ftpe2: Type): Boolean =

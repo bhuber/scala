@@ -1,0 +1,6 @@
+Iterable: true
+Seq: true
+List: true
+Iterable: true
+Seq: false
+List: false

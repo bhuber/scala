@@ -1,0 +1,81 @@
+f(MInv1[C3]) = MInv1
+f(MInv2[C2]) = MInv2
+f(MInv2[C3]) = MInv1
+f(MInv3[C1]) = MInv3
+f(MInv3[C2]) = MInv2
+f(MInv3[C3]) = MInv1
+
+f(MInv1[C1]) = MInv1
+f(MInv2[C1]) = MInv1
+f(MInv2[C2]) = MInv2
+f(MInv3[C1]) = MInv1
+f(MInv3[C2]) = MInv2
+f(MInv3[C3]) = MInv3
+
+f(MCov1[C3]) = MCov1
+f(MCov2[C2]) = MCov2
+f(MCov3[C1]) = MCov3
+
+f(MCov1[C1]) = MCov1
+f(MCov1[C2]) = MCov1
+f(MCov1[C3]) = MCov1
+f(MCov2[C1]) = MCov1
+f(MCov2[C2]) = MCov2
+f(MCov2[C3]) = MCov2
+f(MCov3[C1]) = MCov1
+f(MCov3[C2]) = MCov2
+f(MCov3[C3]) = MCov3
+
+f(MCon1[C1]) = MCon1
+f(MCon1[C2]) = MCon1
+f(MCon1[C3]) = MCon1
+f(MCon2[C1]) = MCon2
+f(MCon2[C2]) = MCon2
+f(MCon2[C3]) = MCon1
+f(MCon3[C1]) = MCon3
+f(MCon3[C2]) = MCon2
+f(MCon3[C3]) = MCon1
+
+f(MCon1[C1]) = MCon1
+f(MCon2[C2]) = MCon2
+f(MCon3[C3]) = MCon3
+
+TCov3[MCov3]
+TCov3[MCov3]
+TCov3[MCov3]
+TCov3[MCov3]
+TCov3[MCov3]
+TCov3[MCov3]
+TCov3[MCov3]
+TCov3[MCov3]
+TCov3[MCov3]
+
+TInv3[MInv1]
+TInv3[MInv2]
+TInv3[MInv3]
+TInv3[MInv1]
+TInv3[MInv2]
+TInv3[MInv3]
+TInv3[MInv1]
+TInv3[MInv2]
+TInv3[MInv3]
+
+TCon3[MCon1]
+TCon3[MCon2]
+TCon3[MCon3]
+TCon3[MCon1]
+TCon3[MCon2]
+TCon3[MCon3]
+TCon3[MCon1]
+TCon3[MCon2]
+TCon3[MCon3]
+
+TCon3[MCov1]
+TCon3[MCov2]
+TCon3[MCov3]
+TCon3[MCov1]
+TCon3[MCov2]
+TCon3[MCov3]
+TCon3[MCov1]
+TCon3[MCov2]
+TCon3[MCov3]
