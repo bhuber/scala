@@ -770,16 +770,16 @@ trait Infer {
      *  @param ftpe2 ...
      *  @return      ...
      */
-    def isAsSpecific(ftpe1: Type, ftpe2: Type): Boolean = ftpe1 match {
+    def isAsSpecificInternal(ftpe1: Type, ftpe2: Type): Boolean = ftpe1 match {
       case OverloadedType(pre, alts) =>
-        alts exists (alt => isAsSpecific(pre.memberType(alt), ftpe2))
+        alts exists (alt => isAsSpecific(this, pre.memberType(alt), ftpe2))
       case et: ExistentialType =>
-        isAsSpecific(ftpe1.skolemizeExistential, ftpe2)
+        isAsSpecific(this, ftpe1.skolemizeExistential, ftpe2)
         //et.withTypeVars(isAsSpecific(_, ftpe2))
       case NullaryMethodType(res) =>
-        isAsSpecific(res, ftpe2)
+        isAsSpecific(this, res, ftpe2)
       case mt: MethodType if mt.isImplicit =>
-        isAsSpecific(ftpe1.resultType, ftpe2)
+        isAsSpecific(this, ftpe1.resultType, ftpe2)
       case MethodType(params, _) if params.nonEmpty =>
         var argtpes = params map (_.tpe)
         if (isVarArgsList(params) && isVarArgsList(ftpe2.params))
@@ -787,9 +787,9 @@ trait Infer {
             if (isRepeatedParamType(argtpe)) argtpe.typeArgs.head else argtpe)
         isApplicable(List(), ftpe2, argtpes, WildcardType)
       case PolyType(tparams, NullaryMethodType(res)) =>
-        isAsSpecific(PolyType(tparams, res), ftpe2)
+        isAsSpecific(this, PolyType(tparams, res), ftpe2)
       case PolyType(tparams, mt: MethodType) if mt.isImplicit =>
-        isAsSpecific(PolyType(tparams, mt.resultType), ftpe2)
+        isAsSpecific(this, PolyType(tparams, mt.resultType), ftpe2)
       case PolyType(_, MethodType(params, _)) if params.nonEmpty =>
         isApplicable(List(), ftpe2, params map (_.tpe), WildcardType)
       // case NullaryMethodType(res) =>
@@ -799,57 +799,30 @@ trait Infer {
       case _ =>
         ftpe2 match {
           case OverloadedType(pre, alts) =>
-            alts forall (alt => isAsSpecific(ftpe1, pre.memberType(alt)))
+            alts forall (alt => isAsSpecific(this, ftpe1, pre.memberType(alt)))
           case et: ExistentialType =>
-            et.withTypeVars(isAsSpecific(ftpe1, _))
+            et.withTypeVars(isAsSpecific(this, ftpe1, _))
           case mt: MethodType =>
-            !mt.isImplicit || isAsSpecific(ftpe1, mt.resultType)
+            !mt.isImplicit || isAsSpecific(this, ftpe1, mt.resultType)
           case NullaryMethodType(res) =>
-            isAsSpecific(ftpe1, res)
+            isAsSpecific(this, ftpe1, res)
           case PolyType(tparams, NullaryMethodType(res)) =>
-            isAsSpecific(ftpe1, PolyType(tparams, res))
+            isAsSpecific(this, ftpe1, PolyType(tparams, res))
           case PolyType(tparams, mt: MethodType) =>
-            !mt.isImplicit || isAsSpecific(ftpe1, PolyType(tparams, mt.resultType))
+            !mt.isImplicit || isAsSpecific(this, ftpe1, PolyType(tparams, mt.resultType))
           case _ =>
-            isAsSpecificValueType(ftpe1, ftpe2, List(), List())
+            isAsSpecificValueType(this, ftpe1, ftpe2, List(), List())
         }
     }
 
-    private def isAsSpecificValueType(tpe1: Type, tpe2: Type, undef1: List[Symbol], undef2: List[Symbol]): Boolean = /*logResult("isAsSpecificValueType" + ((tpe1, tpe2, undef1, undef2))) */ {
-      (tpe1, tpe2) match {
-        case (PolyType(tparams1, rtpe1), _) =>
-          isAsSpecificValueType(rtpe1, tpe2, undef1 ::: tparams1, undef2)
-        case (_, PolyType(tparams2, rtpe2)) =>
-          isAsSpecificValueType(tpe1, rtpe2, undef1, undef2 ::: tparams2)
-        case (_: TypeRef, _: TypeRef) if tpe1.dealias.typeConstructor.typeParams.exists(_.isContravariant) =>
-          // This is the spot where we rescue contravariance from uselessness.
-          // A simple subtype check will consider Ordering[Any] to be more
-          // specific than Ordering[MyVerySpecificType]. Since this defeats the
-          // purpose of being able to specialize behavior via subclassing, we
-          // should instead judge specificity based on the deepest subtype, even
-          // for contravariant type parameters. This of course assumes that both
-          // candidate types are already known to be sound inferences; the only
-          // question is which to infer.
-          val ntpe1 @ TypeRef(pre1, sym1, args1) = tpe1.dealias
-          val ntpe2 @ TypeRef(pre2, sym2, args2) = tpe2.dealias
-          // println("isAsSpecificValueType(\n  " +
-          //   List(tpe1, tpe2, ntpe1, ntpe2).mkString("\n  ") +
-          //   "\n)"
-          // )
-
-          // printResult("result")(
-          (ntpe1.typeConstructor <:< ntpe2.typeConstructor) && {
-            val t1 = ntpe1 baseType sym2
-            val t2 = ntpe2
-
-            // println("args " + ((t1.typeArgs, t2.typeArgs, "ps=" + sym2.typeParams)))
-            (t1.typeArgs corresponds t2.typeArgs)((x, y) =>
-              (x <:< y) || (y.typeSymbol.isTypeParameter && !x.typeSymbol.isTypeParameter)
-            )
-          }
-        case _ =>
-          existentialAbstraction(undef1, tpe1) <:< existentialAbstraction(undef2, tpe2)
-      }
+    /** Standard implementation. */
+    def isAsSpecificValueTypeInternal(tpe1: Type, tpe2: Type, undef1: List[Symbol], undef2: List[Symbol]): Boolean = (tpe1, tpe2) match {
+      case (PolyType(tparams1, rtpe1), _) =>
+        isAsSpecificValueType(this, rtpe1, tpe2, undef1 ::: tparams1, undef2)
+      case (_, PolyType(tparams2, rtpe2)) =>
+        isAsSpecificValueType(this, tpe1, rtpe2, undef1, undef2 ::: tparams2)
+      case _ =>
+        existentialAbstraction(undef1, tpe1) <:< existentialAbstraction(undef2, tpe2)
     }
 
 /*
@@ -872,12 +845,12 @@ trait Infer {
     def isInProperSubClassOrObject(sym1: Symbol, sym2: Symbol) =
       sym2 == NoSymbol || isProperSubClassOrObject(sym1.owner, sym2.owner)
 
-    def isStrictlyMoreSpecific(ftpe1: Type, ftpe2: Type, sym1: Symbol, sym2: Symbol): Boolean = {
+    def isStrictlyMoreSpecificInternal(ftpe1: Type, ftpe2: Type, sym1: Symbol, sym2: Symbol): Boolean = {
       // ftpe1 / ftpe2 are OverloadedTypes (possibly with one single alternative) if they
       // denote the type of an "apply" member method (see "followApply")
       ftpe1.isError || {
-        val specificCount = (if (isAsSpecific(ftpe1, ftpe2)) 1 else 0) -
-                            (if (isAsSpecific(ftpe2, ftpe1) &&
+        val specificCount = (if (isAsSpecific(this, ftpe1, ftpe2)) 1 else 0) -
+                            (if (isAsSpecific(this, ftpe2, ftpe1) &&
                                  // todo: move to isAsSpecific test
 //                                 (!ftpe2.isInstanceOf[OverloadedType] || ftpe1.isInstanceOf[OverloadedType]) &&
                                  (!phase.erasedTypes || covariantReturnOverride(ftpe1, ftpe2))) 1 else 0)
@@ -1487,7 +1460,7 @@ trait Infer {
             val tp2 = pre.memberType(sym2)
             (tp2 == ErrorType ||
              !global.typer.infer.isWeaklyCompatible(tp2, pt) && global.typer.infer.isWeaklyCompatible(tp1, pt) ||
-             isStrictlyMoreSpecific(tp1, tp2, sym1, sym2)) }
+             isStrictlyMoreSpecific(this, tp1, tp2, sym1, sym2)) }
 
         val best = ((NoSymbol: Symbol) /: alts1) ((best, alt) =>
           if (improves(alt, best)) alt else best)
@@ -1605,7 +1578,7 @@ trait Infer {
           def improves(sym1: Symbol, sym2: Symbol) = {
             // util.trace("improve "+sym1+sym1.locationString+" on "+sym2+sym2.locationString)
             sym2 == NoSymbol || sym2.isError || sym2.hasAnnotation(BridgeClass) ||
-            isStrictlyMoreSpecific(followApply(pre.memberType(sym1)),
+            isStrictlyMoreSpecific(this, followApply(pre.memberType(sym1)),
                                    followApply(pre.memberType(sym2)), sym1, sym2)
           }
 

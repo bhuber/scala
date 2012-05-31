@@ -26,11 +26,22 @@ trait Analyzer extends AnyRef
             with ContextErrors
             with StdAttachments
 {
-  val global : Global
+  val global: Global
   import global._
 
+  def isAsSpecific(infer: Inferencer, ftpe1: Type, ftpe2: Type): Boolean =
+    infer.isAsSpecificInternal(ftpe1, ftpe2)
+
+  def isAsSpecificValueType(infer: Inferencer, tpe1: Type, tpe2: Type, undef1: List[Symbol], undef2: List[Symbol]): Boolean =
+    infer.isAsSpecificValueTypeInternal(tpe1, tpe2, undef1, undef2)
+
+  def isStrictlyMoreSpecific(infer: Inferencer, ftpe1: Type, ftpe2: Type, sym1: Symbol, sym2: Symbol): Boolean =
+    infer.isStrictlyMoreSpecificInternal(ftpe1, ftpe2, sym1, sym2)
+
+  private def globalSingleton: Analyzer.this.global.type = global
+
   object namerFactory extends SubComponent {
-    val global: Analyzer.this.global.type = Analyzer.this.global
+    val global = globalSingleton
     val phaseName = "namer"
     val runsAfter = List[String]("parser")
     val runsRightAfter = None
@@ -45,7 +56,7 @@ trait Analyzer extends AnyRef
   }
 
   object packageObjects extends SubComponent {
-    val global: Analyzer.this.global.type = Analyzer.this.global
+    val global = globalSingleton
     val phaseName = "packageobjects"
     val runsAfter = List[String]()
     val runsRightAfter= Some("namer")
@@ -72,7 +83,7 @@ trait Analyzer extends AnyRef
   }
 
   object typerFactory extends SubComponent {
-    val global: Analyzer.this.global.type = Analyzer.this.global
+    val global = globalSingleton
     val phaseName = "typer"
     val runsAfter = List[String]()
     val runsRightAfter = Some("packageobjects")

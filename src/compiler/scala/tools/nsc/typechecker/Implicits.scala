@@ -313,11 +313,11 @@ trait Implicits {
           improvesCache get (info1, info2) match {
             case Some(b) => incCounter(improvesCachedCount); b
             case None =>
-              val result = isStrictlyMoreSpecific(info1.tpe, info2.tpe, info1.sym, info2.sym)
+              val result = isStrictlyMoreSpecific(infer, info1.tpe, info2.tpe, info1.sym, info2.sym)
               improvesCache((info1, info2)) = result
               result
           }
-        } else isStrictlyMoreSpecific(info1.tpe, info2.tpe, info1.sym, info2.sym)
+        } else isStrictlyMoreSpecific(infer, info1.tpe, info2.tpe, info1.sym, info2.sym)
       }
     }
     def isPlausiblyCompatible(tp: Type, pt: Type) = checkCompatibility(fast = true, tp, pt)

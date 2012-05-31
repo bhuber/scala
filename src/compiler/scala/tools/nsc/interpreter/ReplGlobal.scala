@@ -7,7 +7,7 @@ package scala.tools.nsc
 package interpreter
 
 import reporters._
-import typechecker.Analyzer
+import typechecker.{ Analyzer, ContraSpecificity }
 
 /** A layer on top of Global so I can guarantee some extra
  *  functionality for the repl.  It doesn't do much yet.
@@ -23,7 +23,7 @@ trait ReplGlobal extends Global {
 
   override lazy val analyzer = new {
     val global: ReplGlobal.this.type = ReplGlobal.this
-  } with Analyzer {
+  } with Analyzer with ContraSpecificity {
     override def newTyper(context: Context): Typer = new Typer(context) {
       override def typed(tree: Tree, mode: Int, pt: Type): Tree = {
         val res = super.typed(tree, mode, pt)

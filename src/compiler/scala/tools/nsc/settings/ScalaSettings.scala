@@ -124,6 +124,7 @@ trait ScalaSettings extends AbsScalaSettings
    * -Y "Private" settings
    */
   val overrideObjects = BooleanSetting    ("-Yoverride-objects", "Allow member objects to be overridden.")
+  val subSpecificity  = BooleanSetting    ("-Ysubclass-specificity", "Consider subclasses more specific than superclasses, regardless of variance")
   val overrideVars    = BooleanSetting    ("-Yoverride-vars", "Allow vars to be overridden.")
   val Yhelp           = BooleanSetting    ("-Y", "Print a synopsis of private options.")
   val browse          = PhasesSetting     ("-Ybrowse", "Browse the abstract syntax tree after")
