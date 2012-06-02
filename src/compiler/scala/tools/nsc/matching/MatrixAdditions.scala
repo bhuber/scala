@@ -20,7 +20,7 @@ trait MatrixAdditions extends ast.TreeDSL {
   import CODE._
   import Debug._
   import treeInfo._
-  import definitions.{ isPrimitiveValueClass }
+  import definitions.isPrimitiveValueClass
 
   /** The Squeezer, responsible for all the squeezing.
    */
@@ -141,7 +141,8 @@ trait MatrixAdditions extends ast.TreeDSL {
          (sym.isMutable) &&                 // indicates that have not yet checked exhaustivity
         !(sym hasFlag NO_EXHAUSTIVE) &&     // indicates @unchecked
          (sym.tpe.typeSymbol.isSealed) &&
-        !isPrimitiveValueClass(sym.tpe.typeSymbol)   // make sure it's not a primitive, else (5: Byte) match { case 5 => ... } sees no Byte
+         // make sure it's not a primitive, else (5: Byte) match { case 5 => ... } sees no Byte
+        !isPrimitiveValueClass(sym.tpe.typeSymbol)
       }
 
       private lazy val inexhaustives: List[List[Combo]] = {

@@ -4,7 +4,7 @@ Type :help for more information.
 scala> 
 
 scala> :type List[1, 2, 3]
-<console>:2: error: identifier expected but integer literal found.
+<console>:2: error: '.' expected but ',' found.
        List[1, 2, 3]
             ^
 <console>:3: error: ']' expected but '}' found.

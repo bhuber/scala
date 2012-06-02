@@ -4930,10 +4930,13 @@ trait Typers extends Modes with Adaptations with Taggings {
             if (value.tag == UnitTag) UnitClass.tpe
             else ConstantType(value))
 
-        case SingletonTypeTree(ref) =>
-          val ref1 = checkStable(
-            typed(ref, EXPRmode | QUALmode | (mode & TYPEPATmode), AnyRefClass.tpe))
-          tree setType ref1.tpe.resultType
+        case stt @ SingletonTypeTree(ref) =>
+          val pt = if (stt.isLiteral) AnyClass.tpe else AnyRefClass.tpe
+          val ref1 = checkStable(typed(ref, EXPRmode | QUALmode | (mode & TYPEPATmode), pt))
+          tree setType (
+            if (stt.isLiteral) ref1.tpe.resultType.asDeclaredSingleton
+            else ref1.tpe.resultType
+          )
 
         case SelectFromTypeTree(qual, selector) =>
           val qual1 = typedType(qual, mode)

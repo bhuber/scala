@@ -511,6 +511,7 @@ trait Infer {
           else Some(
             if (targ.typeSymbol == RepeatedParamClass)     targ.baseType(SeqClass)
             else if (targ.typeSymbol == JavaRepeatedParamClass) targ.baseType(ArrayClass)
+            else if (targ.isDeclaredSingleton) targ
             // this infers Foo.type instead of "object Foo" (see also widenIfNecessary)
             else if (targ.typeSymbol.isModuleClass || ((opt.experimental || opt.virtPatmat) && tvar.constr.avoidWiden)) targ
             else targ.widen
@@ -1262,6 +1263,8 @@ trait Infer {
         tp match {
           case SingleType(pre, _) =>
             check(pre, bound)
+          case ConstantType(_) =>
+            None
           case TypeRef(pre, sym, args) =>
             if (sym.isAbstractType) {
               if (!isLocalBinding(sym)) patternWarning(tp, "abstract type ")

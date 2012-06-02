@@ -26,6 +26,8 @@ trait Namers extends MethodSynthesis {
   private var _lockedCount = 0
   def lockedCount = this._lockedCount
 
+  private var inferDependentTypes = false
+
   /** Replaces any Idents for which cond is true with fresh TypeTrees().
    *  Does the same for any trees containing EmptyTrees.
    */
@@ -750,7 +752,7 @@ trait Namers extends MethodSynthesis {
      *  value should not be widened, so it has a use even in situations
      *  whether it is otherwise redundant (such as in a singleton.)
      */
-    private def widenIfNecessary(sym: Symbol, tpe: Type, pt: Type): Type = {
+    private def widenIfNecessary(sym: Symbol, tpe: Type, pt: Type, isLiteral: Boolean): Type = {
       val getter =
         if (sym.isValue && sym.owner.isClass && sym.isPrivate)
           sym.getter(sym.owner)
@@ -774,6 +776,7 @@ trait Namers extends MethodSynthesis {
       if (tpe.typeSymbolDirect.isModuleClass) tpe1
       else if (sym.isVariable || sym.isMethod && !sym.hasAccessorFlag)
         if (tpe2 <:< pt) tpe2 else tpe1
+      else if (isLiteral && inferDependentTypes) tpe
       else if (isHidden(tpe)) tpe2
       // In an attempt to make pattern matches involving method local vals
       // compilable into switches, for a time I had a more generous condition:
@@ -792,7 +795,7 @@ trait Namers extends MethodSynthesis {
         if (tree.symbol.isTermMacro) defnTyper.computeMacroDefType(tree, pt)
         else defnTyper.computeType(tree.rhs, pt)
 
-      val typedDefn = widenIfNecessary(tree.symbol, typedBody, pt)
+      val typedDefn = widenIfNecessary(tree.symbol, typedBody, pt, tree.rhs.isInstanceOf[Literal])
       assignTypeToTree(tree, typedDefn)
     }
 
@@ -1034,6 +1037,7 @@ trait Namers extends MethodSynthesis {
           rt.withAnnotation(AnnotationInfo(uncheckedVarianceClass.tpe, List(), List()))
         else rt
       })
+
     }
 
     /**
