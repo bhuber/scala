@@ -8,6 +8,15 @@
 
 package scala
 
+trait ProductN[T <: Int with Singleton] extends Any {
+  
+}
+class FList[Arity <: Int with Singleton, T](val xs: List[T]) {
+  // def :: [T1 >: T](x: T) = new FList[Succ[Arity], T1](x :: xs)
+  def map[U](f: T => U): FList[Arity, U] = new FList[Arity, U](xs map f)
+  def zip[U](that: FList[Arity, U]): FList[Arity, (T, U)] = new FList[Arity, (T, U)](xs zip that.xs)
+}
+
 /** Base trait for all products, which in the standard library include at
  *  least [[scala.Product1]] through [[scala.Product22]] and therefore also
  *  their subclasses [[scala.Tuple1]] through [[scala.Tuple22]].  In addition,
