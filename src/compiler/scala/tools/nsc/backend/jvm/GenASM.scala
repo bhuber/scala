@@ -283,12 +283,16 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
       && !sym.isMutable // lazy vals and vars both
     )
 
+    // Primitives are "abstract final" to prohibit instantiation
+    // without having to provide any implementations, but that is an
+    // illegal combination of modifiers at the bytecode level so
+    // suppress final if abstract if present.
     import asm.Opcodes._
     mkFlags(
       if (privateFlag) ACC_PRIVATE else ACC_PUBLIC,
       if (sym.isDeferred || sym.hasAbstractFlag) ACC_ABSTRACT else 0,
       if (sym.isInterface) ACC_INTERFACE else 0,
-      if (finalFlag) ACC_FINAL else 0,
+      if (finalFlag && !sym.hasAbstractFlag) ACC_FINAL else 0,
       if (sym.isStaticMember) ACC_STATIC else 0,
       if (sym.isBridge) ACC_BRIDGE | ACC_SYNTHETIC else 0,
       if (sym.isClass && !sym.isInterface) ACC_SUPER else 0,
@@ -433,10 +437,11 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
   }
 
   private val majorVersion: Int = (classfileVersion & 0xFF)
+  private val emitStackMapFrame = (majorVersion >= 50)
 
   private val extraProc: Int = mkFlags(
     asm.ClassWriter.COMPUTE_MAXS,
-    if(majorVersion >= 50) asm.ClassWriter.COMPUTE_FRAMES else 0
+    if(emitStackMapFrame) asm.ClassWriter.COMPUTE_FRAMES else 0
   )
 
   val JAVA_LANG_OBJECT = asm.Type.getObjectType("java/lang/Object")
@@ -580,14 +585,14 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
         else                 { sym.javaSimpleName }
       })
 
-      if(hasInternalName) {
+      if(emitStackMapFrame && hasInternalName) {
         val internalName = cachedJN.toString()
         val trackedSym = jsymbol(sym)
         reverseJavaName.get(internalName) match {
           case None         =>
             reverseJavaName.put(internalName, trackedSym)
           case Some(oldsym) =>
-            assert((oldsym == trackedSym) || List(RuntimeNothingClass, RuntimeNullClass).contains(oldsym), // NothingClass, NullClass,
+            assert((oldsym == trackedSym) || (oldsym == RuntimeNothingClass) || (oldsym == RuntimeNullClass), // In contrast, neither NothingClass nor NullClass show up bytecode-level.
                    "how can getCommonSuperclass() do its job if different class symbols get the same bytecode-level internal name.")
         }
       }
@@ -1395,7 +1400,7 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
       // typestate: entering mode with valid call sequences:
       //   ( visitInnerClass | visitField | visitMethod )* visitEnd
 
-      if (isStaticModule(c.symbol) || serialVUID != None || isParcelableClass) {
+      if (isStaticModule(c.symbol) || isParcelableClass) {
 
         if (isStaticModule(c.symbol)) { addModuleInstanceField() }
         addStaticInit(c.lookupStaticCtor)
@@ -1421,6 +1426,18 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
           }
         }
 
+      }
+
+      // add static serialVersionUID field if `clasz` annotated with `@SerialVersionUID(uid: Long)`
+      serialVUID foreach { value =>
+        val fieldName = "serialVersionUID"
+        jclass.visitField(
+          PublicStaticFinal,
+          fieldName,
+          tdesc_long,
+          null, // no java-generic-signature
+          value
+        ).visitEnd()
       }
 
       clasz.fields  foreach genField
@@ -1645,15 +1662,6 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
             lastBlock emit CALL_METHOD(m.symbol.enclClass.primaryConstructor, Static(true))
           }
 
-          // add serialVUID code
-          serialVUID foreach { value =>
-            val fieldName   = "serialVersionUID"
-            val fieldSymbol = clasz.symbol.newValue(newTermName(fieldName), NoPosition, Flags.STATIC | Flags.FINAL) setInfo LongClass.tpe
-            clasz addField new IField(fieldSymbol)
-            lastBlock emit CONSTANT(Constant(value))
-            lastBlock emit STORE_FIELD(fieldSymbol, true)
-          }
-
           if (isParcelableClass) { addCreatorCode(lastBlock) }
 
           lastBlock emit RETURN(UNIT)
@@ -1682,17 +1690,6 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
         clinit.visitTypeInsn(asm.Opcodes.NEW, thisName)
         clinit.visitMethodInsn(asm.Opcodes.INVOKESPECIAL,
                                thisName, INSTANCE_CONSTRUCTOR_NAME, mdesc_arglessvoid)
-      }
-
-      serialVUID foreach { value =>
-        val fieldName = "serialVersionUID"
-        jclass.visitField(
-          PublicStaticFinal,
-          fieldName,
-          tdesc_long,
-          null, // no java-generic-signature
-          value // TODO confirm whether initial value here is behaviorally equiv to fjbg's emitPUSH emitPUTSTATIC
-        ).visitEnd()
       }
 
       if (isParcelableClass) { legacyAddCreatorCode(clinit) }
@@ -2728,7 +2725,7 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
           // TODO Logical's 2nd elem should be declared ValueTypeKind, to better approximate its allowed values (isIntSized, its comments appears to convey)
           // TODO GenICode uses `toTypeKind` to define that elem, `toValueTypeKind` would be needed instead.
           // TODO How about adding some asserts to Logical and similar ones to capture the remaining constraint (UNIT not allowed).
-          case Logical(op, kind) => (op, kind) match {
+          case Logical(op, kind) => ((op, kind): @unchecked) match {
             case (AND, LONG) => emit(Opcodes.LAND)
             case (AND, INT)  => emit(Opcodes.IAND)
             case (AND, _)    =>
@@ -2748,7 +2745,7 @@ abstract class GenASM extends SubComponent with BytecodeWriters {
               if (kind != BOOL) { emitT2T(INT, kind) }
           }
 
-          case Shift(op, kind) => (op, kind) match {
+          case Shift(op, kind) => ((op, kind): @unchecked) match {
             case (LSL, LONG) => emit(Opcodes.LSHL)
             case (LSL, INT)  => emit(Opcodes.ISHL)
             case (LSL, _) =>
