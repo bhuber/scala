@@ -436,6 +436,10 @@ object Predef {
   implicit def seqToCharSequence(xs: collection.IndexedSeq[Char]): CharSequence = new runtime.SeqCharSequence(xs)
   implicit def arrayToCharSequence(xs: Array[Char]): CharSequence               = new runtime.ArrayCharSequence(xs, 0, xs.length)
 
+  @inline implicit final class TapOps[T](val x: T) extends AnyVal {
+    @inline def tap(f: T => Any): T = { f(x) ; x }
+  }
+
   implicit def genericArrayOps[T](xs: Array[T]): ArrayOps[T] = (xs match {
     case x: Array[AnyRef]  => x: ArrayOps[AnyRef]
     case x: Array[Boolean] => x: ArrayOps[Boolean]
