@@ -243,7 +243,16 @@ self =>
   final val InBlock = 1
   final val InTemplate = 2
 
-  lazy val ScalaValueClassNames = tpnme.AnyVal :: definitions.ScalaPrimitiveValueClasses.map(_.name)
+  lazy val ScalaValueClassNames = Seq(tpnme.AnyVal, 
+      tpnme.Unit,
+      tpnme.Boolean,
+      tpnme.Byte,
+      tpnme.Short,
+      tpnme.Char,
+      tpnme.Int,
+      tpnme.Long,
+      tpnme.Float,
+      tpnme.Double)
 
   import nme.raw
 
