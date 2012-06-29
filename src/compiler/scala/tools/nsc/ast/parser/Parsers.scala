@@ -243,6 +243,8 @@ self =>
   final val InBlock = 1
   final val InTemplate = 2
 
+  // These symbols may not yet be loaded (e.g. in the ide) so don't go
+  // through definitions to obtain the names.
   lazy val ScalaValueClassNames = Seq(tpnme.AnyVal, 
       tpnme.Unit,
       tpnme.Boolean,

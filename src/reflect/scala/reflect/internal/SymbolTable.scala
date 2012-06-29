@@ -138,7 +138,12 @@ abstract class SymbolTable extends makro.Universe
     phase = phStack(phStackIndex)
   }
   final def atPhaseStack = ph :: (phStack take phStackIndex).toList.reverse
-  final def phase = ph
+  final def phase = {
+    if (Statistics.hotEnabled)
+      Statistics.incCounter(SymbolTableStats.phaseCounter)
+    
+    ph
+  }
 
   def atPhaseStackMessage = atPhaseStack match {
     case Nil    => ""
@@ -322,4 +327,8 @@ abstract class SymbolTable extends makro.Universe
   /** Is this symbol table a part of a compiler universe?
    */
   def isCompilerUniverse = false
+}
+
+object SymbolTableStats {
+  val phaseCounter = Statistics.newCounter("#phase calls")
 }

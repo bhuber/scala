@@ -89,7 +89,7 @@ trait EtaExpansion { self: Analyzer =>
           liftoutPrefix(fun)
         case Apply(fn, args) =>
           val byName = fn.tpe.params.map((p: Symbol) => definitions.isByNameParamType(p.tpe)).toIndexedSeq
-          // with repeated params, there might be more args than params
+          // with repeated params, there might be more or fewer args than params
           val newArgs = mapWithIndex(args)((arg, i) => liftout(arg, if (i < byName.length) byName(i) else false))
           treeCopy.Apply(tree, liftoutPrefix(fn), newArgs) setType null
         case TypeApply(fn, args) =>

@@ -1813,7 +1813,7 @@ trait Typers extends Modes with Adaptations with Tags {
           val params = fn.tpe.params
           val args2 = if (params.isEmpty || !isRepeatedParamType(params.last.tpe)) args
                       else args.take(params.length - 1) :+ EmptyTree
-          assert(sameLength(args2, params), "mismatch " + clazz + " " + (params map (_.tpe)) + " " + args2)//debug
+          assert(sameLength(args2, params) || call.isErrorTyped, "mismatch " + clazz + " " + (params map (_.tpe)) + " " + args2)//debug
           (superConstr, args1 ::: args2)
         case Block(stats, expr) if !stats.isEmpty =>
           decompose(stats.last)
@@ -1977,7 +1977,7 @@ trait Typers extends Modes with Adaptations with Tags {
           transformedOrTyped(ddef.rhs, EXPRmode, tpt1.tpe)
         }
 
-      if (meth.isClassConstructor && !isPastTyper && !reporter.hasErrors && !meth.owner.isSubClass(AnyValClass)) {
+      if (meth.isClassConstructor && !isPastTyper && !meth.owner.isSubClass(AnyValClass)) {
           // At this point in AnyVal there is no supercall, which will blow up
           // in computeParamAliases; there's nothing to be computed for Anyval anyway.
         if (meth.isPrimaryConstructor)
@@ -3053,12 +3053,13 @@ trait Typers extends Modes with Adaptations with Tags {
           // setType null is necessary so that ref will be stabilized; see bug 881
           val fun1 = typedPos(fun.pos)(Apply(Select(fun setType null, unapp), List(arg)))
 
-          if (fun1.tpe.isErroneous) {
-            duplErrTree
-          } else {
+      if (fun1.tpe.isErroneous) duplErrTree
+      else {
             val formals0 = unapplyTypeList(fun1.symbol, fun1.tpe)
             val formals1 = formalTypes(formals0, args.length)
-            if (sameLength(formals1, args)) {
+
+        if (!sameLength(formals1, args)) duplErrorTree(WrongNumberArgsPatternError(tree, fun))
+        else {
               val args1 = typedArgs(args, mode, formals0, formals1)
               // This used to be the following (failing) assert:
               //   assert(isFullyDefined(pt), tree+" ==> "+UnApply(fun1, args1)+", pt = "+pt)
@@ -3074,8 +3075,7 @@ trait Typers extends Modes with Adaptations with Tags {
           // also skip if we already wrapped a classtag extractor (so we don't keep doing that forever)
           if (uncheckedTypeExtractor.isEmpty || fun1.symbol.owner.isNonBottomSubClass(ClassTagClass)) unapply
           else wrapClassTagUnapply(unapply, uncheckedTypeExtractor.get, unappType.paramTypes.head)
-            } else
-              duplErrorTree(WrongNumberArgsPatternError(tree, fun))
+        }
           }
     }
 
@@ -3893,8 +3893,7 @@ trait Typers extends Modes with Adaptations with Tags {
             ReturnWithoutTypeError(tree, enclMethod.owner)
           } else {
             context.enclMethod.returnsSeen = true
-            val expr1: Tree = typed(expr, EXPRmode | BYVALmode | RETmode, restpt.tpe)
-            
+            val expr1: Tree = typed(expr, EXPRmode | BYVALmode, restpt.tpe)
             // Warn about returning a value if no value can be returned.
             if (restpt.tpe.typeSymbol == UnitClass) {
               // The typing in expr1 says expr is Unit (it has already been coerced if
@@ -4782,7 +4781,7 @@ trait Typers extends Modes with Adaptations with Tags {
           typedTypeApply(tree, mode, fun1, args1)
 
         case Apply(Block(stats, expr), args) =>
-          typed1(atPos(tree.pos)(Block(stats, Apply(expr, args))), mode, pt)
+          typed1(atPos(tree.pos)(Block(stats, Apply(expr, args) setPos tree.pos.makeTransparent)), mode, pt)
 
         case Apply(fun, args) =>
           typedApply(fun, args) match {
@@ -4930,7 +4929,7 @@ trait Typers extends Modes with Adaptations with Tags {
       indentTyping()
 
       var alreadyTyped = false
-      val startByType = Statistics.pushTimerClass(byTypeNanos, tree.getClass)
+      val startByType = Statistics.pushTimer(byTypeStack, byTypeNanos(tree.getClass))
       Statistics.incCounter(visitsByType, tree.getClass)
       try {
         if (context.retyping &&
@@ -4985,7 +4984,7 @@ trait Typers extends Modes with Adaptations with Tags {
       }
       finally {
         deindentTyping()
-        Statistics.popTimerClass(byTypeNanos, startByType)
+        Statistics.popTimer(byTypeStack, startByType)
       }
     }
 
@@ -5173,10 +5172,11 @@ object TypersStats {
   val compoundBaseTypeSeqCount = Statistics.newSubCounter("  of which for compound types", baseTypeSeqCount)
   val typerefBaseTypeSeqCount = Statistics.newSubCounter("  of which for typerefs", baseTypeSeqCount)
   val singletonBaseTypeSeqCount = Statistics.newSubCounter("  of which for singletons", baseTypeSeqCount)
-  val failedSilentNanos   = Statistics.newSubTimer  ("time spent in failed", typerNanos)
-  val failedApplyNanos    = Statistics.newSubTimer  ("  failed apply", typerNanos)
-  val failedOpEqNanos     = Statistics.newSubTimer  ("  failed op=", typerNanos)
-  val isReferencedNanos   = Statistics.newSubTimer  ("time spent ref scanning", typerNanos)
-  val visitsByType        = Statistics.newByClass   ("#visits by tree node", "typer")(Statistics.newCounter(""))
-  val byTypeNanos         = Statistics.newByClassTimerStack("time spent by tree node", typerNanos)
+  val failedSilentNanos   = Statistics.newSubTimer("time spent in failed", typerNanos)
+  val failedApplyNanos    = Statistics.newSubTimer("  failed apply", typerNanos)
+  val failedOpEqNanos     = Statistics.newSubTimer("  failed op=", typerNanos)
+  val isReferencedNanos   = Statistics.newSubTimer("time spent ref scanning", typerNanos)
+  val visitsByType        = Statistics.newByClass("#visits by tree node", "typer")(Statistics.newCounter(""))
+  val byTypeNanos         = Statistics.newByClass("time spent by tree node", "typer")(Statistics.newStackableTimer("", typerNanos))
+  val byTypeStack         = Statistics.newTimerStack()
 }
