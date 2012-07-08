@@ -11,7 +11,7 @@ import java.nio.ByteBuffer
 import scala.collection.{ mutable, immutable }
 import scala.reflect.internal.pickling.{ PickleFormat, PickleBuffer }
 import scala.tools.nsc.symtab._
-import scala.tools.nsc.util.{ SourceFile, NoSourceFile }
+import scala.reflect.internal.util.{ SourceFile, NoSourceFile }
 import scala.reflect.internal.ClassfileConstants._
 import ch.epfl.lamp.fjbg._
 import JAccessFlags._
@@ -183,7 +183,6 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
   class BytecodeGenerator(bytecodeWriter: BytecodeWriter) extends BytecodeUtil {
     def this() = this(new ClassBytecodeWriter { })
     def debugLevel = settings.debuginfo.indexOfChoice
-    import bytecodeWriter.writeClass
 
     val MIN_SWITCH_DENSITY = 0.7
     val INNER_CLASSES_FLAGS =
@@ -203,10 +202,10 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
     val MethodHandleType  = new JObjectType("java.dyn.MethodHandle")
 
     // Scala attributes
-    val BeanInfoAttr        = definitions.getRequiredClass("scala.beans.BeanInfo")
-    val BeanInfoSkipAttr    = definitions.getRequiredClass("scala.beans.BeanInfoSkip")
-    val BeanDisplayNameAttr = definitions.getRequiredClass("scala.beans.BeanDisplayName")
-    val BeanDescriptionAttr = definitions.getRequiredClass("scala.beans.BeanDescription")
+    val BeanInfoAttr        = rootMirror.getRequiredClass("scala.beans.BeanInfo")
+    val BeanInfoSkipAttr    = rootMirror.getRequiredClass("scala.beans.BeanInfoSkip")
+    val BeanDisplayNameAttr = rootMirror.getRequiredClass("scala.beans.BeanDisplayName")
+    val BeanDescriptionAttr = rootMirror.getRequiredClass("scala.beans.BeanDescription")
 
     final val ExcludedForwarderFlags = {
       import Flags._
@@ -342,6 +341,15 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
     def emitClass(jclass: JClass, sym: Symbol) {
       addInnerClasses(jclass)
       writeClass("" + sym.name, jclass.getName(), toByteArray(jclass), sym)
+    }
+
+    val needsOutfileForSymbol = bytecodeWriter.isInstanceOf[ClassBytecodeWriter]
+
+    def writeClass(label: String, jclassName: String, jclassBytes: Array[Byte], sym: Symbol) {
+      val outF: scala.tools.nsc.io.AbstractFile = {
+        if(needsOutfileForSymbol) getFile(sym, jclassName, ".class") else null
+      }
+      bytecodeWriter.writeClass(label, jclassName, jclassBytes, outF)
     }
 
     /** Returns the ScalaSignature annotation if it must be added to this class,
@@ -1711,7 +1719,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
                 abort("Unknown arithmetic primitive " + primitive)
             }
 
-          case Logical(op, kind) => (op, kind) match {
+          case Logical(op, kind) => ((op, kind): @unchecked) match {
             case (AND, LONG) => jcode.emitLAND()
             case (AND, INT)  => jcode.emitIAND()
             case (AND, _)    =>
@@ -1734,7 +1742,7 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
                 jcode.emitT2T(javaType(INT), javaType(kind));
           }
 
-          case Shift(op, kind) => (op, kind) match {
+          case Shift(op, kind) => ((op, kind): @unchecked) match {
             case (LSL, LONG) => jcode.emitLSHL()
             case (LSL, INT)  => jcode.emitISHL()
             case (LSL, _) =>
@@ -1961,11 +1969,15 @@ abstract class GenJVM extends SubComponent with GenJVMUtil with GenAndroid with 
       && !sym.isMutable   // lazy vals and vars both
     )
 
+    // Primitives are "abstract final" to prohibit instantiation
+    // without having to provide any implementations, but that is an
+    // illegal combination of modifiers at the bytecode level so
+    // suppress final if abstract if present.
     mkFlags(
       if (privateFlag) ACC_PRIVATE else ACC_PUBLIC,
       if (sym.isDeferred || sym.hasAbstractFlag) ACC_ABSTRACT else 0,
       if (sym.isInterface) ACC_INTERFACE else 0,
-      if (finalFlag) ACC_FINAL else 0,
+      if (finalFlag && !sym.hasAbstractFlag) ACC_FINAL else 0,
       if (sym.isStaticMember) ACC_STATIC else 0,
       if (sym.isBridge) ACC_BRIDGE | ACC_SYNTHETIC else 0,
       if (sym.isClass && !sym.isInterface) ACC_SUPER else 0,

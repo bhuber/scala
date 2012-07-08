@@ -187,7 +187,7 @@ trait Infer {
       tp1 // @MAT aliases already handled by subtyping
   }
 
-  private val stdErrorClass = RootClass.newErrorClass(tpnme.ERROR)
+  private val stdErrorClass = rootMirror.RootClass.newErrorClass(tpnme.ERROR)
   private val stdErrorValue = stdErrorClass.newErrorValue(nme.ERROR)
 
   /** The context-dependent inferencer part */
@@ -1105,7 +1105,9 @@ trait Infer {
           try {
             // debuglog("TVARS "+ (tvars map (_.constr)))
             // look at the argument types of the primary constructor corresponding to the pattern
-            val variances  = undetparams map varianceInType(ctorTp.paramTypes.headOption getOrElse ctorTp)
+            val variances  =
+              if (ctorTp.paramTypes.isEmpty) undetparams map varianceInType(ctorTp)
+              else undetparams map varianceInTypes(ctorTp.paramTypes)
             val targs      = solvedTypes(tvars, undetparams, variances, true, lubDepth(List(resTp, pt)))
             // checkBounds(tree, NoPrefix, NoSymbol, undetparams, targs, "inferred ")
             // no checkBounds here. If we enable it, test bug602 fails.
@@ -1248,7 +1250,10 @@ trait Infer {
       check(tp, Nil)
     }
 
-    def checkCheckable(tree: Tree, tp: Type, kind: String) {
+    // if top-level abstract types can be checked using a classtag extractor, don't warn about them
+    def checkCheckable(tree: Tree, tp: Type, inPattern: Boolean, canRemedy: Boolean = false) = {
+      val kind = if (inPattern) "pattern " else ""
+
       def patternWarning(tp0: Type, prefix: String) = {
         context.unit.uncheckedWarning(tree.pos, prefix+tp0+" in type "+kind+tp+" is unchecked since it is eliminated by erasure")
       }
@@ -1267,7 +1272,8 @@ trait Infer {
             None
           case TypeRef(pre, sym, args) =>
             if (sym.isAbstractType) {
-              if (!isLocalBinding(sym)) patternWarning(tp, "abstract type ")
+              // we only use the extractor for top-level type tests, type arguments (see below) remain unchecked
+              if (!isLocalBinding(sym) && !canRemedy) patternWarning(tp, "abstract type ")
             } else if (sym.isAliasType) {
               check(tp.normalize, bound)
             } else if (sym == NothingClass || sym == NullClass || sym == AnyValClass) {
@@ -1275,7 +1281,8 @@ trait Infer {
             } else {
               for (arg <- args) {
                 if (sym == ArrayClass) check(arg, bound)
-                else if (arg.typeArgs.nonEmpty) ()   // avoid spurious warnings with higher-kinded types
+                else if (arg.typeArgs.nonEmpty) ()              // avoid spurious warnings with higher-kinded types
+                else if (sym == NonLocalReturnControlClass) ()  // no way to suppress unchecked warnings on try/catch
                 else arg match {
                   case TypeRef(_, sym, _) if isLocalBinding(sym) =>
                     ;
@@ -1323,7 +1330,7 @@ trait Infer {
       }
     }
 
-    def inferTypedPattern(tree0: Tree, pattp: Type, pt0: Type): Type = {
+    def inferTypedPattern(tree0: Tree, pattp: Type, pt0: Type, canRemedy: Boolean): Type = {
       val pt        = widen(pt0)
       val ptparams  = freeTypeParamsOfTerms(pt)
       val tpparams  = freeTypeParamsOfTerms(pattp)
@@ -1340,7 +1347,7 @@ trait Infer {
         return ErrorType
       }
 
-      checkCheckable(tree0, pattp, "pattern ")
+      checkCheckable(tree0, pattp, inPattern = true, canRemedy)
       if (pattp <:< pt) ()
       else {
         debuglog("free type params (1) = " + tpparams)
@@ -1610,6 +1617,13 @@ trait Infer {
         val saved = context.state
         var fallback = false
         context.setBufferErrors()
+        // We cache the current buffer because it is impossible to 
+        // distinguish errors that occurred before entering tryTwice
+        // and our first attempt in 'withImplicitsDisabled'. If the
+        // first attempt fails we try with implicits on *and* clean
+        // buffer but that would also flush any pre-tryTwice valid
+        // errors, hence some manual buffer tweaking is necessary.
+        val errorsToRestore = context.flushAndReturnBuffer()
         try {
           context.withImplicitsDisabled(infer(false))
           if (context.hasErrors) {
@@ -1623,8 +1637,10 @@ trait Infer {
           case ex: TypeError        => // recoverable cyclic references
             context.restoreState(saved)
             if (!fallback) infer(true) else ()
+        } finally {
+          context.restoreState(saved)
+          context.updateBuffer(errorsToRestore)
         }
-        context.restoreState(saved)
       }
       else infer(true)
     }
